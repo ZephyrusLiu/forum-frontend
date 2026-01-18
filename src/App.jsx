@@ -5,7 +5,7 @@ export default function App() {
     <div className="page">
       <header className="card">
         <div className="badge">PR Demo</div>
-        <div className="title">✅ PR Demo is live — SCRUM-80</div>
+        <div className="title">PR Demo is live — SCRUM-80</div>
         <div className="meta">build: {buildDate}</div>
       </header>
 
