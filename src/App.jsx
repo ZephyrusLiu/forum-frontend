@@ -1,25 +1,39 @@
+import { Navigate, Route, Routes } from 'react-router-dom';
+import Navbar from './components/Navbar.jsx';
+
+import Login from './pages/Login.jsx';
+import Register from './pages/Register.jsx';
+import Home from './pages/Home.jsx';
+import Profile from './pages/Profile.jsx';
+import PostDetail from './pages/PostDetail.jsx';
+import ContactUs from './pages/ContactUs.jsx';
+import AdminUsers from './pages/AdminUsers.jsx';
+import AdminMessages from './pages/AdminMessages.jsx';
+import NotFound from './pages/NotFound.jsx';
+
 export default function App() {
-  const buildDate = new Date().toISOString().slice(0, 10);
-
   return (
-    <div className="page">
-      <header className="card">
-        <div className="badge">PR Demo</div>
-        <div className="title">PR Demo is live — SCRUM-80</div>
-        <div className="meta">build: {buildDate}</div>
-      </header>
+    <div className="app">
+      <Navbar />
 
-      <main className="card">
-        <h2 className="h2">What this proves</h2>
-        <ul className="list">
-          <li>Repo can run locally (npm install / npm run dev)</li>
-          <li>Small change is easy to review in a PR</li>
-          <li>No backend required</li>
-        </ul>
+      <main className="container">
+        <Routes>
+          {/* Default landing -> /users/login */}
+          <Route path="/" element={<Navigate to="/users/login" replace />} />
 
-        <div className="hint">
-          Tip: Put your Jira key in the PR title/branch/commit for the PR demo.
-        </div>
+          {/* Required placeholder routes */}
+          <Route path="/users/login" element={<Login />} />
+          <Route path="/users/register" element={<Register />} />
+          <Route path="/home" element={<Home />} />
+          <Route path="/users/:id/profile" element={<Profile />} />
+          <Route path="/posts/:id" element={<PostDetail />} />
+          <Route path="/contactus" element={<ContactUs />} />
+          <Route path="/users" element={<AdminUsers />} />
+          <Route path="/messages" element={<AdminMessages />} />
+
+          {/* Fallback */}
+          <Route path="*" element={<NotFound />} />
+        </Routes>
       </main>
     </div>
   );
