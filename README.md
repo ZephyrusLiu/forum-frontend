@@ -1,6 +1,4 @@
-# forum-frontend
-
-# PR Demo
+# Forum Frontend (Day1-YL-1)
 
 ## Run locally
 ```bash
