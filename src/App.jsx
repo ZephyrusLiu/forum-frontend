@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import Navbar from './components/Navbar.jsx';
+import ProtectedRoute from './components/ProtectedRoute.jsx';
 
 import Login from './pages/Login.jsx';
 import Register from './pages/Register.jsx';
@@ -10,6 +11,7 @@ import ContactUs from './pages/ContactUs.jsx';
 import AdminUsers from './pages/AdminUsers.jsx';
 import AdminMessages from './pages/AdminMessages.jsx';
 import NotFound from './pages/NotFound.jsx';
+import VerifyEmail from './pages/VerifyEmail.jsx';
 
 export default function App() {
   return (
@@ -21,15 +23,19 @@ export default function App() {
           {/* Default landing -> /users/login */}
           <Route path="/" element={<Navigate to="/users/login" replace />} />
 
-          {/* Required placeholder routes */}
+          {/* Public routes */}
           <Route path="/users/login" element={<Login />} />
           <Route path="/users/register" element={<Register />} />
-          <Route path="/home" element={<Home />} />
-          <Route path="/users/:id/profile" element={<Profile />} />
-          <Route path="/posts/:id" element={<PostDetail />} />
           <Route path="/contactus" element={<ContactUs />} />
-          <Route path="/users" element={<AdminUsers />} />
-          <Route path="/messages" element={<AdminMessages />} />
+
+          {/* Protected routes */}
+          <Route element={<ProtectedRoute />}>
+            <Route path="/home" element={<Home />} />
+            <Route path="/users/:id/profile" element={<Profile />} />
+            <Route path="/posts/:id" element={<PostDetail />} />
+            <Route path="/users" element={<AdminUsers />} />
+            <Route path="/messages" element={<AdminMessages />} />
+          </Route>
 
           {/* Fallback */}
           <Route path="*" element={<NotFound />} />
