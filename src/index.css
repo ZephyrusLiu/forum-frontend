@@ -8,8 +8,8 @@
 
 body {
   margin: 0;
-  background: #f7f7f8;
-  color: #111;
+  background: whitesmoke;
+  color: black;
 }
 
 .app { min-height: 100vh; }
@@ -22,14 +22,14 @@ body {
 
 .card {
   background: white;
-  border: 1px solid #e6e6e6;
+  border: 1px solid gainsboro;
   border-radius: 14px;
   padding: 16px;
 }
 
 .badge {
   display: inline-flex;
-  border: 1px solid #e6e6e6;
+  border: 1px solid gainsboro;
   border-radius: 999px;
   padding: 2px 10px;
   font-size: 12px;
@@ -43,14 +43,14 @@ body {
 
 .meta {
   font-size: 13px;
-  color: #555;
+  color: dimgray;
   margin-top: 6px;
 }
 
 .content {
   margin-top: 12px;
   font-size: 14px;
-  color: #222;
+  color: black;
 }
 
 /* Navbar */
@@ -59,7 +59,7 @@ body {
   top: 0;
   z-index: 10;
   background: white;
-  border-bottom: 1px solid #e6e6e6;
+  border-bottom: 1px solid gainsboro;
 }
 
 .nav__brand {
@@ -73,7 +73,7 @@ body {
 
 .nav__title {
   font-size: 14px;
-  color: #333;
+  color: black;
   font-weight: 600;
 }
 
@@ -88,18 +88,66 @@ body {
 
 .nav__link {
   text-decoration: none;
-  color: #333;
+  color: black;
   font-size: 13px;
   padding: 6px 10px;
   border-radius: 999px;
-  border: 1px solid #e6e6e6;
-  background: #fafafa;
+  border: 1px solid gainsboro;
+  background: whitesmoke;
 }
 
-.nav__link:hover { background: #f0f0f0; }
+.nav__link:hover { background: silver; }
 
 .nav__link--active {
-  background: #111;
-  color: #fff;
-  border-color: #111;
+  background: black;
+  color: white;
+  border-color: black;
 }
+
+/* Forms */
+.form { display: grid; gap: 12px; margin-top: 10px; }
+.field { display: grid; gap: 6px; text-align: left; }
+.field span { font-size: 12px; color: dimgray; }
+
+.field input {
+  border: 1px solid gainsboro;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 14px;
+  outline: none;
+  background: white;
+}
+
+.field input:focus { border-color: black; }
+
+.btn {
+  border: 1px solid black;
+  background: black;
+  color: white;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.error {
+  border: 1px solid lightcoral;
+  background: mistyrose;
+  color: darkred;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+}
+
+.ok {
+  border: 1px solid lightgreen;
+  background: honeydew;
+  color: darkgreen;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+}
+
+.hint { font-size: 12px; color: dimgray; }
