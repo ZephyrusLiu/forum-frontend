@@ -26,6 +26,7 @@ export default function App() {
           {/* Public routes */}
           <Route path="/users/login" element={<Login />} />
           <Route path="/users/register" element={<Register />} />
+          <Route path="/users/verify" element={<VerifyEmail />} />
           <Route path="/contactus" element={<ContactUs />} />
 
           {/* Protected routes */}

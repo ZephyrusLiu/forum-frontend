@@ -1,4 +1,4 @@
-# Forum Frontend (Day2-YL-1)
+# Forum Frontend (Day2-YL-3)
 
 ## Run locally
 ```bash
@@ -109,4 +109,34 @@ npm run dev
 
   console.log("D2-YL-1 mock enabled (register/login).");
   console.log("Use: user@demo.com + pass1234");
+})();
+
+(() => {
+  if (!window.__mock) {
+    console.warn("❌ Please run D2-YL-1 mock first (it installs framework).");
+    return;
+  }
+
+  const { handlers, jsonResponse, readJsonBody, makeJwt } = window.__mock;
+
+  handlers.set("POST /users/verify", async ({ init }) => {
+    const body = await readJsonBody(init);
+
+    // Option B: token URL
+    if (body?.token) {
+      const token = makeJwt({ userId: 1001, type: "user", verified: true });
+      return jsonResponse({ token }, 200);
+    }
+
+    // Option A: 6-digit code
+    if (body?.code === "123456") {
+      const token = makeJwt({ userId: 1001, type: "user", verified: true });
+      return jsonResponse({ token }, 200);
+    }
+
+    return jsonResponse({ error: { message: "Invalid code/token" } }, 400);
+  });
+
+  console.log("✅ D2-YL-3 mock enabled (/users/verify code+token).");
+  console.log("Code success: 123456 ; Token URL: /users/verify?token=anything");
 })();
