@@ -113,7 +113,7 @@ npm run dev
 
 (() => {
   if (!window.__mock) {
-    console.warn("❌ Please run D2-YL-1 mock first (it installs framework).");
+    console.warn("Please run D2-YL-1 mock first (it installs framework).");
     return;
   }
 
@@ -137,6 +137,6 @@ npm run dev
     return jsonResponse({ error: { message: "Invalid code/token" } }, 400);
   });
 
-  console.log("✅ D2-YL-3 mock enabled (/users/verify code+token).");
+  console.log("D2-YL-3 mock enabled (/users/verify code+token).");
   console.log("Code success: 123456 ; Token URL: /users/verify?token=anything");
 })();
