@@ -151,3 +151,29 @@ body {
 }
 
 .hint { font-size: 12px; color: dimgray; }
+
+.nav__spacer { flex: 1; }
+
+.nav__pill {
+  font-size: 12px;
+  color: black;
+  border: 1px solid gainsboro;
+  border-radius: 999px;
+  padding: 4px 10px;
+  background: whitesmoke;
+}
+
+.nav__btn {
+  margin-left: 10px;
+  border: 1px solid black;
+  background: white;
+  color: black;
+  border-radius: 10px;
+  padding: 6px 10px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.nav__btn:hover {
+  background: lightgray;
+}
