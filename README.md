@@ -1,13 +1,11 @@
-# Forum Frontend (Day3-YL-2)
+# Forum Frontend (D3-YL-3)
 
-## Key Rules (AC)
-App default landing behavior is correct: unauthenticated users land on /users/login
-Home shows Published list (only shows username / date / title; does not show full content)
-Create post can publish or save as draft
-PostDetail shows: Post Title, Post Description/Content, User Name + User Profile Image, Post Date, Update Date (if edited), Attachments/Images (if any)
-PostDetail shows replies list with replier name + profile image
-Normal user can delete their own reply (button visible only for own replies)
-Opening PostDetail calls History create
+## Features
+1. Navbar is always visible on every page.
+2. Buttons adapt based on user group:
+    - visitor / unverified / normal / admin / super_admin
+3. Login/register/verify flows with token storage.
+4. Home list, Post detail, Create post, and Profile pages (Top3, Drafts, History, Edit Profile).
 
 ## Run locally
 ```bash

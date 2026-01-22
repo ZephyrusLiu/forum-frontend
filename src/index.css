@@ -212,6 +212,7 @@ body {
 
 .btn--ghost {
   background: transparent;
+  color: black;
 }
 
 .list {
