@@ -156,6 +156,23 @@ export default function PostDetail() {
   const canReply =
     user?.status === 'active' || user?.type === 'admin' || user?.type === 'super';
 
+  const canPublish =
+    !isPublished && (user?.type === 'admin' || user?.type === 'super' || String(myUserId) === String(post?.userId));
+
+  async function publishPost() {
+    try {
+      const raw = await apiRequest('PATCH', endpoints.updatePost(postId), token, {
+        status: 'Published',
+        isPublished: true,
+        published: true,
+      });
+      const updated = unwrapResult(raw);
+      setPost((prev) => ({ ...(prev || {}), ...(updated || {}), status: 'Published', published: true }));
+    } catch (e) {
+      alert(e?.message || 'Failed to publish post');
+    }
+  }
+
   return (
     <PageShell title={`/posts/${postId}`} subtitle={null}>
       <div className="stack">

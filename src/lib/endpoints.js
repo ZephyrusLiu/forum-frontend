@@ -5,6 +5,7 @@ export const endpoints = {
     `/posts?status=${encodeURIComponent(status)}`,
   listAllPosts: () => '/posts',
   postDetail: (postId) => `/posts/${postId}`,
+  updatePost: (postId) => `/posts/${postId}`,
   createPost: () => '/posts',
   createReply: (postId) => `/posts/${postId}/replies`,
   deleteReply: (replyId) => `/replies/${replyId}`,
@@ -17,9 +18,10 @@ export const endpoints = {
   top3MyPosts: () => '/posts/me/top3',
   myDraftPosts: () => '/posts/me/drafts',
 
-  // Admin endpoints
+   // Admin endpoints
   adminListUsers: () => '/users',
   adminUpdateUserStatus: (userId) => `/users/${userId}/status`,
+  adminUpdateUserRole: (userId) => `/users/${userId}/role`,
   adminListMessages: () => '/messages',
   adminUpdateMessageStatus: (messageId) => `/messages/${messageId}/status`,
 
