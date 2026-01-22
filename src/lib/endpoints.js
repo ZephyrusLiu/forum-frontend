@@ -3,6 +3,7 @@ export const endpoints = {
   // Post service
   listPublishedPosts: (status = 'Published') =>
     `/posts?status=${encodeURIComponent(status)}`,
+  listAllPosts: () => '/posts',
   postDetail: (postId) => `/posts/${postId}`,
   createPost: () => '/posts',
   createReply: (postId) => `/posts/${postId}/replies`,
@@ -15,6 +16,12 @@ export const endpoints = {
   // Optional Post endpoints for Profile page (adjust if AR uses different paths)
   top3MyPosts: () => '/posts/me/top3',
   myDraftPosts: () => '/posts/me/drafts',
+
+  // Admin endpoints
+  adminListUsers: () => '/users',
+  adminUpdateUserStatus: (userId) => `/users/${userId}/status`,
+  adminListMessages: () => '/messages',
+  adminUpdateMessageStatus: (messageId) => `/messages/${messageId}/status`,
 
   // History service
   createHistory: () => '/history',

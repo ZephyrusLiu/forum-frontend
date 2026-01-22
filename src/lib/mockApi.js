@@ -25,12 +25,24 @@ const demoPosts = [
     id: 'p-101',
     title: 'Draft: Roadmap Thoughts',
     content: 'This is a draft post and should not show on /home.',
-    status: 'Unpublished',
+    status: 'Banned',
     published: false,
     userId: '1001',
     userName: 'Demo User',
     profileImageUrl: 'https://placekitten.com/97/97',
     dateCreated: '2024-09-03T09:30:00Z',
+    attachments: [],
+  },
+  {
+    id: 'p-103',
+    title: 'Deleted: Archived Post',
+    content: 'This post is deleted and only visible for admins.',
+    status: 'Deleted',
+    published: false,
+    userId: '3001',
+    userName: 'Unverified Member',
+    profileImageUrl: 'https://placekitten.com/95/95',
+    dateCreated: '2024-08-20T09:30:00Z',
     attachments: [],
   },
   {
@@ -44,6 +56,18 @@ const demoPosts = [
     profileImageUrl: 'https://placekitten.com/98/98',
     dateCreated: '2024-09-04T08:15:00Z',
     attachments: ['https://placekitten.com/320/200', 'https://placekitten.com/420/240'],
+  },
+  {
+    id: 'p-104',
+    title: 'Draft: Upcoming Features',
+    content: 'This is a draft post.',
+    status: 'Unpublished',
+    published: false,
+    userId: '1001',
+    userName: 'Demo User',
+    profileImageUrl: 'https://placekitten.com/94/94',
+    dateCreated: '2024-09-05T07:45:00Z',
+    attachments: [],
   },
 ];
 
@@ -117,6 +141,29 @@ const demoProfiles = new Map([
     },
   ],
 ]);
+const demoAdminUsers = [
+  { userId: '1001', email: 'user@demo.com', type: 'user', status: 'active' },
+  { userId: '2001', email: 'admin@demo.com', type: 'admin', status: 'active' },
+  { userId: '3001', email: 'unverified@demo.com', type: 'user', status: 'unverified' },
+  { userId: '9001', email: 'super@demo.com', type: 'super', status: 'active' },
+  { userId: '4001', email: 'banned@demo.com', type: 'user', status: 'banned' },
+];
+const demoAdminMessages = [
+  {
+    id: 'm-200',
+    from: 'user@demo.com',
+    subject: 'Please help',
+    status: 'open',
+    createdAt: '2024-09-05T08:00:00Z',
+  },
+  {
+    id: 'm-201',
+    from: 'admin@demo.com',
+    subject: 'Resolved issue',
+    status: 'closed',
+    createdAt: '2024-09-04T09:30:00Z',
+  },
+];
 
 function b64UrlEncode(obj) {
   const json = JSON.stringify(obj);
@@ -297,6 +344,22 @@ export default function installMockApi() {
       return jsonResponse({ token: makeJwt(claims) }, 200);
     }
 
+    if (path === '/users') {
+      if (method === 'GET') {
+        return jsonResponse({ result: demoAdminUsers }, 200);
+      }
+    }
+
+    if (path.startsWith('/users/') && path.endsWith('/status') && method === 'PATCH') {
+      const userId = path.split('/')[2];
+      const body = await readJsonBody(init);
+      const nextStatus = body?.status || 'active';
+      const idx = demoAdminUsers.findIndex((u) => String(u.userId) === String(userId));
+      if (idx === -1) return jsonResponse({ error: { message: 'User not found' } }, 404);
+      demoAdminUsers[idx] = { ...demoAdminUsers[idx], status: nextStatus };
+      return jsonResponse({ result: demoAdminUsers[idx] }, 200);
+    }
+
     if (path.startsWith('/users/') && path.endsWith('/profile')) {
       const userId = path.split('/')[2];
       if (method === 'GET') {
@@ -328,7 +391,10 @@ export default function installMockApi() {
     }
 
     if (method === 'GET' && path === '/posts/me/drafts') {
-      const drafts = demoPosts.filter((post) => post.published === false);
+      const drafts = demoPosts.filter((post) => {
+        const status = String(post.status || '').toLowerCase();
+        return post.published === false && status !== 'banned' && status !== 'deleted';
+      });
       return jsonResponse({ result: drafts }, 200);
     }
 
@@ -408,6 +474,22 @@ export default function installMockApi() {
       const userId = String(payload?.sub || 1001);
       const items = demoHistory.filter((h) => String(h.userId) === userId);
       return jsonResponse({ result: items }, 200);
+    }
+
+    if (path === '/messages') {
+      if (method === 'GET') {
+        return jsonResponse({ result: demoAdminMessages }, 200);
+      }
+    }
+
+    if (path.startsWith('/messages/') && path.endsWith('/status') && method === 'PATCH') {
+      const messageId = path.split('/')[2];
+      const body = await readJsonBody(init);
+      const nextStatus = body?.status || 'open';
+      const idx = demoAdminMessages.findIndex((m) => String(m.id) === String(messageId));
+      if (idx === -1) return jsonResponse({ error: { message: 'Message not found' } }, 404);
+      demoAdminMessages[idx] = { ...demoAdminMessages[idx], status: nextStatus };
+      return jsonResponse({ result: demoAdminMessages[idx] }, 200);
     }
 
     return jsonResponse({ error: { message: 'Unhandled mock route' } }, 404);

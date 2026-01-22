@@ -235,6 +235,25 @@ body {
   gap: 10px;
 }
 
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.table th,
+.table td {
+  border-bottom: 1px solid gainsboro;
+  padding: 10px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.table th {
+  background: whitesmoke;
+  font-weight: 600;
+}
+
 .link {
   text-decoration: none;
 }
