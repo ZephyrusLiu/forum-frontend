@@ -71,6 +71,52 @@ const demoReplies = [
 ];
 
 const demoHistory = [];
+const demoProfiles = new Map([
+  [
+    '1001',
+    {
+      userId: '1001',
+      firstName: 'Demo',
+      lastName: 'User',
+      email: 'user@demo.com',
+      profileImageUrl: 'https://placekitten.com/120/120',
+      registeredAt: '2024-08-15T09:00:00Z',
+    },
+  ],
+  [
+    '2001',
+    {
+      userId: '2001',
+      firstName: 'Admin',
+      lastName: 'Jane',
+      email: 'admin@demo.com',
+      profileImageUrl: 'https://placekitten.com/121/121',
+      registeredAt: '2024-08-01T12:00:00Z',
+    },
+  ],
+  [
+    '3001',
+    {
+      userId: '3001',
+      firstName: 'Unverified',
+      lastName: 'Member',
+      email: 'unverified@demo.com',
+      profileImageUrl: 'https://placekitten.com/122/122',
+      registeredAt: '2024-08-20T15:00:00Z',
+    },
+  ],
+  [
+    '9001',
+    {
+      userId: '9001',
+      firstName: 'Super',
+      lastName: 'Admin',
+      email: 'super@demo.com',
+      profileImageUrl: 'https://placekitten.com/123/123',
+      registeredAt: '2024-07-10T08:00:00Z',
+    },
+  ],
+]);
 
 function b64UrlEncode(obj) {
   const json = JSON.stringify(obj);
@@ -165,6 +211,21 @@ function getRepliesByPost(postId) {
   return demoReplies.filter((reply) => String(reply.postId) === String(postId));
 }
 
+function getProfileByUserId(userId) {
+  const key = String(userId || '');
+  if (!demoProfiles.has(key)) {
+    demoProfiles.set(key, {
+      userId: key,
+      firstName: 'New',
+      lastName: 'User',
+      email: `user${key}@demo.com`,
+      profileImageUrl: 'https://placekitten.com/124/124',
+      registeredAt: new Date().toISOString(),
+    });
+  }
+  return demoProfiles.get(key);
+}
+
 let installed = false;
 
 export default function installMockApi() {
@@ -234,6 +295,41 @@ export default function installMockApi() {
         status: 'active',
       };
       return jsonResponse({ token: makeJwt(claims) }, 200);
+    }
+
+    if (path.startsWith('/users/') && path.endsWith('/profile')) {
+      const userId = path.split('/')[2];
+      if (method === 'GET') {
+        const profile = getProfileByUserId(userId);
+        return jsonResponse({ result: profile }, 200);
+      }
+
+      if (method === 'PUT') {
+        const body = await readJsonBody(init);
+        const profile = getProfileByUserId(userId);
+        const updated = {
+          ...profile,
+          email: body?.email ?? profile.email,
+          profileImageUrl: body?.profileImageUrl ?? profile.profileImageUrl,
+        };
+        demoProfiles.set(String(userId), updated);
+        return jsonResponse({ result: updated, verificationRequired: body?.email !== profile.email }, 200);
+      }
+    }
+
+    if (method === 'GET' && path === '/posts/me/top3') {
+      const published = filterPublished(demoPosts);
+      const withCounts = published.map((post) => ({
+        ...post,
+        replyCount: getRepliesByPost(post.id).length,
+      }));
+      const top3 = withCounts.sort((a, b) => b.replyCount - a.replyCount).slice(0, 3);
+      return jsonResponse({ result: top3 }, 200);
+    }
+
+    if (method === 'GET' && path === '/posts/me/drafts') {
+      const drafts = demoPosts.filter((post) => post.published === false);
+      return jsonResponse({ result: drafts }, 200);
     }
 
     if (method === 'GET' && path === '/posts') {
