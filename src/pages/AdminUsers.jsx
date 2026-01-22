@@ -5,7 +5,7 @@ import { apiRequest } from '../lib/apiClient.js';
 import { endpoints, unwrapResult } from '../lib/endpoints.js';
 
 export default function AdminUsers() {
-  const { token } = useSelector((s) => s.auth);
+  const { token, user } = useSelector((s) => s.auth);
   const [status, setStatus] = useState('idle');
   const [error, setError] = useState('');
   const [users, setUsers] = useState([]);
@@ -46,6 +46,19 @@ export default function AdminUsers() {
       alert(e?.message || 'Failed to update user status');
     }
   };
+
+  const promoteUser = async (userId) => {
+    try {
+      await apiRequest('PATCH', endpoints.adminUpdateUserRole(userId), token, { type: 'admin' });
+      setUsers((prev) =>
+        prev.map((u) => (String(u.userId || u.id) === String(userId) ? { ...u, type: 'admin' } : u)),
+      );
+    } catch (e) {
+      alert(e?.message || 'Failed to promote user');
+    }
+  };
+
+  const isSuperAdmin = user?.type === 'super';
   return (
     <PageShell title="/users (Admin Users)">
       {status === 'loading' ? <div className="muted">Loading…</div> : null}
@@ -63,6 +76,7 @@ export default function AdminUsers() {
                 <th>Type</th>
                 <th>Status</th>
                 <th>Action</th>
+                {isSuperAdmin ? <th>Promote</th> : null}
               </tr>
             </thead>
             <tbody>
@@ -70,6 +84,7 @@ export default function AdminUsers() {
                 const id = u.userId || u.id;
                 const statusText = String(u.status || '').toLowerCase();
                 const isBanned = statusText === 'banned';
+                const isAdmin = (u.type || u.role) === 'admin';
                 return (
                   <tr key={id}>
                     <td>{id}</td>
@@ -84,6 +99,17 @@ export default function AdminUsers() {
                         {isBanned ? 'Unban' : 'Ban'}
                       </button>
                     </td>
+                    {isSuperAdmin ? (
+                      <td>
+                        <button
+                          className="btn btn--ghost"
+                          onClick={() => promoteUser(id)}
+                          disabled={isAdmin}
+                        >
+                          {isAdmin ? 'Admin' : 'Promote'}
+                        </button>
+                      </td>
+                    ) : null}
                   </tr>
                 );
               })}

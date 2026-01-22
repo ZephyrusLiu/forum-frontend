@@ -17,9 +17,10 @@ export const endpoints = {
   top3MyPosts: () => '/posts/me/top3',
   myDraftPosts: () => '/posts/me/drafts',
 
-  // Admin endpoints
+   // Admin endpoints
   adminListUsers: () => '/users',
   adminUpdateUserStatus: (userId) => `/users/${userId}/status`,
+  adminUpdateUserRole: (userId) => `/users/${userId}/role`,
   adminListMessages: () => '/messages',
   adminUpdateMessageStatus: (messageId) => `/messages/${messageId}/status`,
 

@@ -1,4 +1,4 @@
-# Forum Frontend (D3-YL-3)
+# Forum Frontend (D4-YL-2)
 
 ## Features
 1. Navbar is always visible on every page.
@@ -7,7 +7,7 @@
 3. Login/register/verify flows with token storage.
 4. Home list, Post detail, Create post, and Profile pages (Top3, Drafts, History, Edit Profile).
 5. Admin home with Published/Banned/Deleted sections plus admin /users and /messages pages.
-
+6. Super admin can promote users to admin from the user management table.
 
 ## Run locally
 ```bash

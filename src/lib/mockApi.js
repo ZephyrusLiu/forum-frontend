@@ -360,6 +360,16 @@ export default function installMockApi() {
       return jsonResponse({ result: demoAdminUsers[idx] }, 200);
     }
 
+    if (path.startsWith('/users/') && path.endsWith('/role') && method === 'PATCH') {
+      const userId = path.split('/')[2];
+      const body = await readJsonBody(init);
+      const nextType = body?.type || 'user';
+      const idx = demoAdminUsers.findIndex((u) => String(u.userId) === String(userId));
+      if (idx === -1) return jsonResponse({ error: { message: 'User not found' } }, 404);
+      demoAdminUsers[idx] = { ...demoAdminUsers[idx], type: nextType };
+      return jsonResponse({ result: demoAdminUsers[idx] }, 200);
+    }
+
     if (path.startsWith('/users/') && path.endsWith('/profile')) {
       const userId = path.split('/')[2];
       if (method === 'GET') {
