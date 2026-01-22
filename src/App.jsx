@@ -1,47 +1,48 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
+
 import Navbar from './components/Navbar.jsx';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
 
-import Login from './pages/Login.jsx';
-import Register from './pages/Register.jsx';
-import Home from './pages/Home.jsx';
-import Profile from './pages/Profile.jsx';
-import PostDetail from './pages/PostDetail.jsx';
-import ContactUs from './pages/ContactUs.jsx';
-import AdminUsers from './pages/AdminUsers.jsx';
 import AdminMessages from './pages/AdminMessages.jsx';
-import NotFound from './pages/NotFound.jsx';
+import AdminUsers from './pages/AdminUsers.jsx';
+import ContactUs from './pages/ContactUs.jsx';
+import CreatePost from './pages/CreatePost.jsx';
+import Home from './pages/Home.jsx';
+import Login from './pages/Login.jsx';
+import PostDetail from './pages/PostDetail.jsx';
+import Profile from './pages/Profile.jsx';
+import Register from './pages/Register.jsx';
 import VerifyEmail from './pages/VerifyEmail.jsx';
 
 export default function App() {
   return (
-    <div className="app">
+    <>
       <Navbar />
-
-      <main className="container">
+      <div className="container">
         <Routes>
-          {/* Default landing -> /users/login */}
           <Route path="/" element={<Navigate to="/users/login" replace />} />
 
-          {/* Public routes */}
+          {/* Public */}
           <Route path="/users/login" element={<Login />} />
           <Route path="/users/register" element={<Register />} />
           <Route path="/users/verify" element={<VerifyEmail />} />
           <Route path="/contactus" element={<ContactUs />} />
 
-          {/* Protected routes */}
+          {/* Protected */}
           <Route element={<ProtectedRoute />}>
             <Route path="/home" element={<Home />} />
+            <Route path="/posts/create" element={<CreatePost />} />
+            <Route path="/posts/:postId" element={<PostDetail />} />
             <Route path="/users/:id/profile" element={<Profile />} />
-            <Route path="/posts/:id" element={<PostDetail />} />
+
+            {/* Admin */}
             <Route path="/users" element={<AdminUsers />} />
             <Route path="/messages" element={<AdminMessages />} />
           </Route>
 
-          {/* Fallback */}
-          <Route path="*" element={<NotFound />} />
+          <Route path="*" element={<Navigate to="/home" replace />} />
         </Routes>
-      </main>
-    </div>
+      </div>
+    </>
   );
 }
