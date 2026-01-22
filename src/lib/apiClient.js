@@ -1,9 +1,16 @@
-const DEFAULT_BASE = 'http://localhost:8080';
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || DEFAULT_BASE;
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080';
 
-export async function apiRequest(path, { method = 'GET', token, body } = {}) {
+function buildAuthHeader(token) {
+  if (!token) return null;
+  if (typeof token === 'string' && token.toLowerCase().startsWith('bearer ')) return token;
+  return `Bearer ${token}`;
+}
+
+export async function apiRequest(method, path, token, body) {
   const headers = { 'Content-Type': 'application/json' };
-  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const auth = buildAuthHeader(token);
+  if (auth) headers.Authorization = auth;
 
   const res = await fetch(`${API_BASE_URL}${path}`, {
     method,
@@ -11,18 +18,10 @@ export async function apiRequest(path, { method = 'GET', token, body } = {}) {
     body: body ? JSON.stringify(body) : undefined,
   });
 
-  const text = await res.text();
-  const data = text ? JSON.parse(text) : null;
+  const data = await res.json().catch(() => ({}));
 
   if (!res.ok) {
-    const msg =
-      data?.error?.message ||
-      data?.message ||
-      `Request failed: ${res.status} ${res.statusText}`;
-    const err = new Error(msg);
-    err.status = res.status;
-    err.data = data;
-    throw err;
+    throw new Error(data?.error?.message || data?.message || 'Request failed');
   }
 
   return data;

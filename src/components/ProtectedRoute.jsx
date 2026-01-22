@@ -1,13 +1,20 @@
-import { useSelector } from 'react-redux';
-import { Navigate, Outlet, useLocation } from 'react-router-dom';
+import { useEffect } from 'react';
+import { Navigate, Outlet } from 'react-router-dom';
+import { useDispatch, useSelector } from 'react-redux';
+import { logout } from '../store/authSlice.js';
 
 export default function ProtectedRoute() {
-  const token = useSelector((s) => s.auth.token);
-  const location = useLocation();
+  const dispatch = useDispatch();
+  const { token, user } = useSelector((state) => state.auth);
 
-  if (!token) {
-    return <Navigate to="/users/login" replace state={{ from: location }} />;
-  }
+  useEffect(() => {
+    if (token && user?.status === 'banned') {
+      dispatch(logout());
+    }
+  }, [dispatch, token, user?.status]);
+
+  if (!token) return <Navigate to="/users/login" replace />;
+  if (user?.status === 'banned') return <Navigate to="/users/login" replace />;
 
   return <Outlet />;
 }
