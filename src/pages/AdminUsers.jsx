@@ -47,14 +47,14 @@ export default function AdminUsers() {
     }
   };
 
-  const promoteUser = async (userId) => {
+  const updateRole = async (userId, nextType) => {
     try {
-      await apiRequest('PATCH', endpoints.adminUpdateUserRole(userId), token, { type: 'admin' });
+      await apiRequest('PATCH', endpoints.adminUpdateUserRole(userId), token, { type: nextType });
       setUsers((prev) =>
-        prev.map((u) => (String(u.userId || u.id) === String(userId) ? { ...u, type: 'admin' } : u)),
+        prev.map((u) => (String(u.userId || u.id) === String(userId) ? { ...u, type: nextType } : u)),
       );
     } catch (e) {
-      alert(e?.message || 'Failed to promote user');
+      alert(e?.message || 'Failed to update user role');
     }
   };
 
@@ -103,10 +103,9 @@ export default function AdminUsers() {
                       <td>
                         <button
                           className="btn btn--ghost"
-                          onClick={() => promoteUser(id)}
-                          disabled={isAdmin}
+                          onClick={() => updateRole(id, isAdmin ? 'user' : 'admin')}
                         >
-                          {isAdmin ? 'Admin' : 'Promote'}
+                          {isAdmin ? 'Demote' : 'Promote'}
                         </button>
                       </td>
                     ) : null}

@@ -61,9 +61,10 @@ export const registerThunk = createAsyncThunk('auth/register', async (payload, t
   }
 });
 
-export const verifyTokenThunk = createAsyncThunk('auth/verifyToken', async (_, thunkApi) => {
+export const verifyTokenThunk = createAsyncThunk('auth/verifyToken', async (payload, thunkApi) => {
   try {
-    const token = thunkApi.getState().auth.token;
+    const stateToken = thunkApi.getState().auth.token;
+    const token = payload?.token || stateToken;
     if (!token) throw new Error('No token');
     const response = await apiRequest('GET', '/users/verify-token', token);
     const newToken = extractToken(response) || token;
@@ -77,7 +78,8 @@ export const verifyEmailThunk = createAsyncThunk('auth/verifyEmail', async (payl
   try {
     const token = thunkApi.getState().auth.token;
     const response = await apiRequest('POST', '/users/verify', token, payload);
-    return response;
+    const newToken = extractToken(response);
+    return { response, token: newToken };
   } catch (err) {
     return thunkApi.rejectWithValue(err.message);
   }
@@ -174,9 +176,12 @@ const authSlice = createSlice({
         state.verifyEmailStatus = 'loading';
         state.verifyEmailError = null;
       })
-      .addCase(verifyEmailThunk.fulfilled, (state) => {
+      .addCase(verifyEmailThunk.fulfilled, (state, action) => {
         state.verifyEmailStatus = 'succeeded';
         state.verifyEmailError = null;
+        if (action.payload?.token) {
+          authSlice.caseReducers.setTokenAndUser(state, { payload: action.payload.token });
+        }
       })
       .addCase(verifyEmailThunk.rejected, (state, action) => {
         state.verifyEmailStatus = 'failed';

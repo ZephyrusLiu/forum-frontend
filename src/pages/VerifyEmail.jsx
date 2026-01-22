@@ -19,7 +19,7 @@ export default function VerifyEmail() {
   const [email, setEmail] = useState(q.get('email') || '');
   const [code, setCode] = useState('');
 
-  const { verifyStatus, verifyError, user } = useSelector((s) => s.auth);
+  const { verifyEmailStatus, verifyEmailError, user } = useSelector((s) => s.auth);
 
   // Option B: token URL auto-verify
   useEffect(() => {
@@ -33,7 +33,7 @@ export default function VerifyEmail() {
     await dispatch(verifyEmailThunk({ email, code }));
   };
 
-  const done = verifyStatus === 'succeeded';
+  const done = verifyEmailStatus === 'succeeded';
 
   useEffect(() => {
     if (done && user?.userId) navigate('/home', { replace: true });
@@ -62,20 +62,20 @@ export default function VerifyEmail() {
             />
           </label>
 
-          {verifyError ? <div className="error">Error: {verifyError}</div> : null}
+          {verifyEmailError ? <div className="error">Error: {verifyEmailError}</div> : null}
           {done ? (
             <div className="ok">
               Verified! {user?.userId ? 'Redirecting to /home…' : <>Please <Link to="/users/login">login</Link>.</>}
             </div>
           ) : null}
 
-          <button className="btn" disabled={verifyStatus === 'loading'}>
-            {verifyStatus === 'loading' ? 'Verifying…' : 'Verify'}
+          <button className="btn" disabled={verifyEmailStatus === 'loading'}>
+            {verifyEmailStatus === 'loading' ? 'Verifying…' : 'Verify'}
           </button>
         </form>
       ) : (
         <div>
-          {verifyError ? <div className="error">Error: {verifyError}</div> : null}
+          {verifyEmailError ? <div className="error">Error: {verifyEmailError}</div> : null}
           {done ? (
             <div className="ok">
               Verified via token URL! {user?.userId ? 'Redirecting to /home…' : <>Please <Link to="/users/login">login</Link>.</>}

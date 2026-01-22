@@ -215,8 +215,26 @@ function isProtectedPath(path) {
 }
 
 function pickClaimsByEmail(email) {
-  const match = demoUsers.find((u) => u.email === email);
-  if (match) return match;
+  const baseUser = demoUsers.find((u) => u.email === email);
+  const adminUser = demoAdminUsers.find((u) => u.email === email);
+
+  if (baseUser) {
+    return {
+      ...baseUser,
+      type: adminUser?.type ?? baseUser.type,
+      status: adminUser?.status ?? baseUser.status,
+    };
+  }
+
+  if (adminUser) {
+    return {
+      email,
+      sub: Number(adminUser.userId),
+      type: adminUser.type,
+      status: adminUser.status,
+    };
+  }
+
   return { email, sub: 1001, type: 'user', status: 'active' };
 }
 
@@ -419,6 +437,21 @@ export default function installMockApi() {
       const post = getPostById(postId);
       if (!post) return jsonResponse({ error: { message: 'Post not found' } }, 404);
       return jsonResponse({ post, replies: getRepliesByPost(postId) }, 200);
+    }
+
+    if (method === 'PATCH' && path.startsWith('/posts/')) {
+      const postId = path.split('/')[2];
+      const body = await readJsonBody(init);
+      const post = getPostById(postId);
+      if (!post) return jsonResponse({ error: { message: 'Post not found' } }, 404);
+      const updated = {
+        ...post,
+        status: body?.status ?? post.status,
+        published: body?.published ?? body?.isPublished ?? post.published,
+      };
+      const idx = demoPosts.findIndex((p) => String(p.id) === String(postId));
+      demoPosts[idx] = updated;
+      return jsonResponse({ result: updated }, 200);
     }
 
     if (method === 'POST' && path === '/posts') {
