@@ -6,6 +6,8 @@
     - visitor / unverified / normal / admin / super_admin
 3. Login/register/verify flows with token storage.
 4. Home list, Post detail, Create post, and Profile pages (Top3, Drafts, History, Edit Profile).
+5. Admin home with Published/Banned/Deleted sections plus admin /users and /messages pages.
+
 
 ## Run locally
 ```bash
