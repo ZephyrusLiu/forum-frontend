@@ -64,10 +64,13 @@ export const registerThunk = createAsyncThunk('auth/register', async (payload, t
 export const verifyTokenThunk = createAsyncThunk('auth/verifyToken', async (payload, thunkApi) => {
   try {
     const stateToken = thunkApi.getState().auth.token;
-    const token = payload?.token || stateToken;
-    if (!token) throw new Error('No token');
-    const response = await apiRequest('GET', '/users/verify-token', token);
-    const newToken = extractToken(response) || token;
+    const verify_token = payload?.token;
+    if (!verify_token) throw new Error('No verification token');
+
+    const params = new URLSearchParams({token : verify_token});
+    const response = await apiRequest('GET', `/users/verify?${params.toString()}`, stateToken);
+
+    const newToken = extractToken(response) || stateToken;
     return { token: newToken };
   } catch (err) {
     return thunkApi.rejectWithValue(err.message);
@@ -77,7 +80,13 @@ export const verifyTokenThunk = createAsyncThunk('auth/verifyToken', async (payl
 export const verifyEmailThunk = createAsyncThunk('auth/verifyEmail', async (payload, thunkApi) => {
   try {
     const token = thunkApi.getState().auth.token;
-    const response = await apiRequest('POST', '/users/verify', token, payload);
+    const code = payload?.code;
+
+    if (!code) throw new Error('No verification code');
+
+    const params = new URLSearchParams({code});
+    const response = await apiRequest('GET', `/users/verify?${params.toString()}`, token);
+
     const newToken = extractToken(response);
     return { response, token: newToken };
   } catch (err) {

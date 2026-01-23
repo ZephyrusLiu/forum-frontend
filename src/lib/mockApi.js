@@ -1,4 +1,4 @@
-import { API_BASE_URL } from './apiClient.js';
+const API_BASE_URL = 'https://mockapi.local'
 
 const demoUsers = [
   { email: 'user@demo.com', sub: 1001, type: 'user', status: 'active' },
