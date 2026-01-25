@@ -1,4 +1,17 @@
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080';
+
+function shouldUseMock() {
+  if (typeof window === 'undefined') return false;
+  return (
+    import.meta.env.VITE_USE_MOCK === 'true' ||
+    new URLSearchParams(window.location.search).get('mock') === '1'
+  );
+}
+
+function getBaseURL() {
+  if (shouldUseMock()) return 'https://mockapi.local';
+  const configured = (import.meta.env.VITE_API_BASE || '').trim();
+  return configured || 'http://localhost:8080';
+}
 
 function buildAuthHeader(token) {
   if (!token) return null;
@@ -8,11 +21,12 @@ function buildAuthHeader(token) {
 
 export async function apiRequest(method, path, token, body) {
   const headers = { 'Content-Type': 'application/json' };
+  const base_url = getBaseURL();
 
   const auth = buildAuthHeader(token);
   if (auth) headers.Authorization = auth;
 
-  const res = await fetch(`${API_BASE_URL}${path}`, {
+  const res = await fetch(`${base_url}${path}`, {
     method,
     headers,
     body: body ? JSON.stringify(body) : undefined,

@@ -1,4 +1,4 @@
-import { API_BASE_URL } from './apiClient.js';
+const API_BASE_URL = 'https://mockapi.local'
 
 const demoUsers = [
   { email: 'user@demo.com', sub: 1001, type: 'user', status: 'active' },
@@ -515,7 +515,17 @@ export default function installMockApi() {
     if (method === 'GET' && path === '/history') {
       const payload = getAuthPayload(headers);
       const userId = String(payload?.sub || 1001);
-      const items = demoHistory.filter((h) => String(h.userId) === userId);
+      const keyword = (parsed.searchParams.get('keyword') || '').trim().toLowerCase();
+      let items = demoHistory.filter((h) => String(h.userId) === userId);
+      if (keyword) {
+        items = items.filter((h) => {
+          const post = getPostById(h.postId);
+          if (!post) return false;
+          if (filterPublished([post]).length === 0) return false;
+          const text = `${post.title || ''} ${post.content || ''}`.toLowerCase();
+          return text.includes(keyword);
+        });
+      }
       return jsonResponse({ result: items }, 200);
     }
 

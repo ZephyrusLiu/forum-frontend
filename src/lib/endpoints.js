@@ -27,7 +27,8 @@ export const endpoints = {
 
   // History service
   createHistory: () => '/history',
-  listHistory: () => '/history',
+  listHistory: (keyword) =>
+    keyword ? `/history?keyword=${encodeURIComponent(keyword)}` : '/history',
 };
 
 // Normalize backend responses (some services might wrap payloads as {result: ...})
