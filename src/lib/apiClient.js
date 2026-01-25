@@ -1,16 +1,16 @@
 
-function getBaseURL(path){
-	const active_paths = [
-		'users/'
-	];
+function shouldUseMock() {
+  if (typeof window === 'undefined') return false;
+  return (
+    import.meta.env.VITE_USE_MOCK === 'true' ||
+    new URLSearchParams(window.location.search).get('mock') === '1'
+  );
+}
 
-	for(const x of active_paths){
-		if(path.includes(x)){
-			return 'http://localhost:8080';
-		}
-	}
-
-	return 'https://mockapi.local';
+function getBaseURL() {
+  if (shouldUseMock()) return 'https://mockapi.local';
+  const configured = (import.meta.env.VITE_API_BASE || '').trim();
+  return configured || 'http://localhost:8080';
 }
 
 function buildAuthHeader(token) {
@@ -21,7 +21,7 @@ function buildAuthHeader(token) {
 
 export async function apiRequest(method, path, token, body) {
   const headers = { 'Content-Type': 'application/json' };
-  const base_url = getBaseURL(path);
+  const base_url = getBaseURL();
 
   const auth = buildAuthHeader(token);
   if (auth) headers.Authorization = auth;
