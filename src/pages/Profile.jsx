@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useSelector } from 'react-redux';
+
 import PageShell from '../components/PageShell.jsx';
 import { apiRequest } from '../lib/apiClient.js';
 import { endpoints, formatDate, unwrapResult } from '../lib/endpoints.js';
@@ -24,6 +25,22 @@ export default function Profile() {
 
   const profileUserId = id || user?.userId;
 
+  // ===== helpers (FIXED for your backend shape) =====
+  function getPostId(p) {
+    const pid = p?._id ?? p?.id ?? p?.postId;
+    return pid == null ? '' : String(pid);
+  }
+
+  function getDraftEditLink(p) {
+    const pid = getPostId(p);
+    return pid ? `/posts/create?draftId=${encodeURIComponent(pid)}` : null;
+  }
+
+  function getPostViewLink(p) {
+    const pid = getPostId(p);
+    return pid ? `/posts/${pid}` : null;
+  }
+
   useEffect(() => {
     let ignore = false;
 
@@ -32,11 +49,11 @@ export default function Profile() {
       setError('');
 
       try {
-        const [profileRaw, topRaw, draftRaw, historyRaw] = await Promise.all([
+        const [profileRaw, topRaw, draftRaw] = await Promise.all([
           apiRequest('GET', endpoints.userProfile(profileUserId), token),
           apiRequest('GET', endpoints.top3MyPosts(), token),
           apiRequest('GET', endpoints.myDraftPosts(), token),
-          apiRequest('GET', endpoints.listHistory(), token),
+          // apiRequest('GET', endpoints.listHistory(), token),
         ]);
 
         if (ignore) return;
@@ -51,9 +68,6 @@ export default function Profile() {
 
         const draftList = unwrapResult(draftRaw);
         setDrafts(Array.isArray(draftList) ? draftList : draftList?.items || []);
-
-        const historyList = unwrapResult(historyRaw);
-        setHistory(Array.isArray(historyList) ? historyList : historyList?.items || []);
 
         setStatus('succeeded');
       } catch (e) {
@@ -117,6 +131,7 @@ export default function Profile() {
   const fullName = `${profile?.firstName || ''} ${profile?.lastName || ''}`.trim() || 'Unnamed';
   const profileImage =
     profile?.profileImageUrl || profile?.profileImageURL || profile?.avatarUrl || profile?.avatar;
+
   return (
     <PageShell title={`/users/${profileUserId}/profile`} subtitle={null}>
       {status === 'loading' ? <div className="muted">Loading…</div> : null}
@@ -131,7 +146,9 @@ export default function Profile() {
                 <div className="title" style={{ marginTop: 0 }}>
                   {fullName}
                 </div>
-                <div className="meta">Registered: {formatDate(profile?.registeredAt || profile?.createdAt)}</div>
+                <div className="meta">
+                  Registered: {formatDate(profile?.registeredAt || profile?.createdAt)}
+                </div>
                 <div className="meta">Email: {profile?.email || '—'}</div>
               </div>
             </div>
@@ -144,11 +161,19 @@ export default function Profile() {
             <form className="form" onSubmit={onSave}>
               <label className="field">
                 <span>Profile Image URL (S3)</span>
-                <input value={editImage} onChange={(e) => setEditImage(e.target.value)} placeholder="https://..." />
+                <input
+                  value={editImage}
+                  onChange={(e) => setEditImage(e.target.value)}
+                  placeholder="https://..."
+                />
               </label>
               <label className="field">
                 <span>Email</span>
-                <input value={editEmail} onChange={(e) => setEditEmail(e.target.value)} placeholder="you@example.com" />
+                <input
+                  value={editEmail}
+                  onChange={(e) => setEditEmail(e.target.value)}
+                  placeholder="you@example.com"
+                />
               </label>
               {saveMessage ? (
                 <div className={saveStatus === 'failed' ? 'error' : 'ok'}>{saveMessage}</div>
@@ -158,7 +183,8 @@ export default function Profile() {
                   {saveStatus === 'loading' ? 'Saving…' : 'Save Changes'}
                 </button>
                 <div className="hint">
-                  Updating email triggers verification. Go to <Link to="/users/verify">/users/verify</Link>.
+                  Updating email triggers verification. Go to{' '}
+                  <Link to="/users/verify">/users/verify</Link>.
                 </div>
               </div>
             </form>
@@ -173,19 +199,32 @@ export default function Profile() {
                 <div className="muted">No posts yet.</div>
               ) : (
                 <div className="list">
-                  {topPosts.map((post) => (
-                    <div key={post.id || post.postId} className="listItem">
-                      <div className="listItem__top">
-                        <Link className="link" to={`/posts/${post.id || post.postId}`}>
-                          <b>{post.title || '(Untitled)'}</b>
-                        </Link>
-                        <span className="pill">{post.replyCount ?? post.repliesCount ?? post.replies?.length ?? 0} replies</span>
+                  {topPosts.map((post) => {
+                    const to = getPostViewLink(post);
+                    const key = getPostId(post) || `${post.title}-${post.createdAt}`;
+
+                    return (
+                      <div key={key} className="listItem">
+                        <div className="listItem__top">
+                          {to ? (
+                            <Link className="link" to={to}>
+                              <b>{post.title || '(Untitled)'}</b>
+                            </Link>
+                          ) : (
+                            <span className="muted">
+                              <b>{post.title || '(Untitled)'}</b>
+                            </span>
+                          )}
+                          <span className="pill">
+                            {post.replyCount ?? post.repliesCount ?? post.replies?.length ?? 0} replies
+                          </span>
+                        </div>
+                        <div className="muted">
+                          {formatDate(post.dateCreated || post.createdAt || post.created_at)}
+                        </div>
                       </div>
-                      <div className="muted">
-                        {formatDate(post.dateCreated || post.createdAt || post.created_at)}
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -198,19 +237,30 @@ export default function Profile() {
                 <div className="muted">No drafts.</div>
               ) : (
                 <div className="list">
-                  {drafts.map((post) => (
-                    <div key={post.id || post.postId} className="listItem">
-                      <div className="listItem__top">
-                        <Link className="link" to={`/posts/${post.id || post.postId}`}>
-                          <b>{post.title || '(Untitled)'}</b>
-                        </Link>
-                        <span className="pill">Draft</span>
+                  {drafts.map((post) => {
+                    const to = getDraftEditLink(post);
+                    const key = getPostId(post) || `${post.title}-${post.createdAt}`;
+
+                    return (
+                      <div key={key} className="listItem">
+                        <div className="listItem__top">
+                          {to ? (
+                            <Link className="link" to={to}>
+                              <b>{post.title || '(Untitled)'}</b>
+                            </Link>
+                          ) : (
+                            <span className="muted">
+                              <b>{post.title || '(Untitled)'}</b> (missing id)
+                            </span>
+                          )}
+                          <span className="pill">Draft</span>
+                        </div>
+                        <div className="muted">
+                          {formatDate(post.dateCreated || post.createdAt || post.created_at)}
+                        </div>
                       </div>
-                      <div className="muted">
-                        {formatDate(post.dateCreated || post.createdAt || post.created_at)}
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -225,7 +275,10 @@ export default function Profile() {
             ) : (
               <div className="list">
                 {filteredHistory.map((item) => (
-                  <div key={item.historyId || `${item.postId}-${item.viewDate}`} className="listItem">
+                  <div
+                    key={item.historyId || `${item.postId}-${item.viewDate}`}
+                    className="listItem"
+                  >
                     <div className="listItem__top">
                       <Link className="link" to={`/posts/${item.postId}`}>
                         <b>Post {item.postId}</b>

@@ -1,17 +1,20 @@
 
-function getBaseURL(path){
-	const active_paths = [
-		'users/'
-	];
+function getBaseURL(path) {
+  const active_paths = [
+    'users/',
+    'api/', // post service
+  ];
 
-	for(const x of active_paths){
-		if(path.includes(x)){
-			return 'http://localhost:8080';
-		}
-	}
+  for (const x of active_paths) {
+    if (path.includes(x)) {
+      return import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080';
+    }
+  }
 
-	return 'https://mockapi.local';
+  // 🔥 FIX: default to real API, not mock
+  return import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080';
 }
+
 
 function buildAuthHeader(token) {
   if (!token) return null;
