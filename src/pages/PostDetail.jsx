@@ -107,7 +107,7 @@ function getErrorMessage(e, fallback) {
   );
 }
 
-// ---------- Avatar helpers ----------
+// ---------- fallback user fields (if your post/reply already contains them) ----------
 function getUserName(x) {
   return (
     x?.userName ||
@@ -136,12 +136,31 @@ function getUserAvatarUrl(x) {
   );
 }
 
+// ---------- user profile helpers ----------
+function fullNameFromProfile(p) {
+  const fn = p?.firstName || "";
+  const ln = p?.lastName || "";
+  const name = `${fn} ${ln}`.trim();
+  return name || "Anonymous";
+}
+
+// ✅ FIX: Flask returns profileS3Key
+function mediaKeyFromProfile(p) {
+  return p?.profileS3Key || p?.profile_s3_key || p?.profileMediaID || "";
+}
+
 // ---------- Attachments helpers ----------
 function looksLikeImage(name = "", contentType = "") {
   const ct = String(contentType || "").toLowerCase();
   if (ct.startsWith("image/")) return true;
   const n = String(name || "").toLowerCase();
-  return n.endsWith(".png") || n.endsWith(".jpg") || n.endsWith(".jpeg") || n.endsWith(".gif") || n.endsWith(".webp");
+  return (
+    n.endsWith(".png") ||
+    n.endsWith(".jpg") ||
+    n.endsWith(".jpeg") ||
+    n.endsWith(".gif") ||
+    n.endsWith(".webp")
+  );
 }
 
 function nameFromKey(key) {
@@ -150,7 +169,6 @@ function nameFromKey(key) {
   return parts[parts.length - 1] || "attachment";
 }
 
-// Supports: attachments: ["posts/...key"] OR [{key,url,...}]
 function normalizeAttachments(post) {
   const a =
     post?.attachments ||
@@ -164,20 +182,18 @@ function normalizeAttachments(post) {
 
   return a
     .map((it) => {
-      // ✅ if backend stores string keys
       if (typeof it === "string") {
         const key = it;
         return {
           id: key,
           key,
           name: nameFromKey(key),
-          url: "", // will be filled after presign
+          url: "",
           contentType: "",
           size: null,
         };
       }
 
-      // object shape
       const key = it?.key || it?.path || it?.s3Key || "";
       const name =
         it?.name ||
@@ -226,7 +242,6 @@ function formatBytes(bytes) {
 function getReplyId(r) {
   return r?._id || r?.id;
 }
-
 function getParentId(r) {
   return r?.parentReplyId || r?.parentId || r?.parentReply || null;
 }
@@ -245,8 +260,8 @@ function buildReplyTree(flat) {
     const id = getReplyId(r);
     if (!id) continue;
 
-    const node = nodes.get(String(id));
     const parentId = getParentId(r);
+    const node = nodes.get(String(id));
 
     if (parentId && nodes.has(String(parentId))) {
       nodes.get(String(parentId)).__children.push(node);
@@ -277,6 +292,9 @@ export default function PostDetail() {
   const navigate = useNavigate();
   const { token, user } = useSelector((s) => s.auth);
 
+  // ✅ file-service base (direct)
+  const FILE_BASE = import.meta.env.VITE_FILE_SERVICE_URL || "http://localhost:5005";
+
   const [status, setStatus] = useState("idle");
   const [errorMsg, setErrorMsg] = useState("");
   const [post, setPost] = useState(null);
@@ -294,8 +312,12 @@ export default function PostDetail() {
   const [replyParentId, setReplyParentId] = useState(null);
   const [replyParentPreview, setReplyParentPreview] = useState(null);
 
-  // ✅ NEW: attachment links (key -> signed url)
-  const [attachmentLinks, setAttachmentLinks] = useState({}); // { [key]: url }
+  // attachments: key -> signed url
+  const [attachmentLinks, setAttachmentLinks] = useState({});
+
+  // ✅ NEW: profile cache + avatar url cache
+  const [profilesById, setProfilesById] = useState({});
+  const [avatarUrlById, setAvatarUrlById] = useState({});
 
   const myId = user?.id ?? user?.userId ?? user?._id ?? user?.user?._id;
   const isAdmin = user?.type === "admin" || user?.type === "super";
@@ -331,6 +353,25 @@ export default function PostDetail() {
     token && isPublishedPost && !isHiddenPost && !isArchivedPost && !isBannedPost && !isDeletedPost
   );
 
+  // ---------- gateway: user profile fetch ----------
+  async function fetchUserProfile(userId) {
+    // ✅ through gateway: /users/:id/profile
+    const raw = await apiRequest("GET", `/users/${Number(userId)}/profile`, token);
+    return unwrapResult(raw);
+  }
+
+  // ---------- file-service: presign any s3 key ----------
+  async function presignKey(key) {
+    const res = await fetch(`${FILE_BASE}/files/url?key=${encodeURIComponent(key)}`, {
+      method: "GET",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data?.message || "Failed to get file url");
+    return data?.url || data?.result?.url || "";
+  }
+
+  // ---------- Admin actions ----------
   const handleBanPost = async () => {
     if (!postId) return;
     if (!confirm("Ban this post?")) return;
@@ -540,31 +581,17 @@ export default function PostDetail() {
     };
   }, [postId, token, isAdmin]);
 
-  // ---------- Derived: attachments + reply tree ----------
+  // ---------- Derived ----------
   const attachments = useMemo(() => normalizeAttachments(post), [post]);
 
-  // ✅ NEW: presign keys that don’t have a url yet
+  // ---------- presign attachments ----------
   useEffect(() => {
     let alive = true;
 
-    async function presignKey(key) {
-      const url = `http://localhost:5005/files/url?key=${encodeURIComponent(key)}`;
-      const res = await fetch(url, {
-        method: "GET",
-        headers: {
-          Authorization: token ? `Bearer ${token}` : "",
-        },
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.message || "Failed to get file url");
-      return data?.url || data?.result?.url || "";
-    }
-
     async function run() {
-      if (!token) return; // file-service requires auth
-      const keys = attachments.map((a) => a.key).filter(Boolean);
+      if (!token) return;
 
-      // only those missing in cache
+      const keys = attachments.map((a) => a.key).filter(Boolean);
       const missing = keys.filter((k) => !attachmentLinks[String(k)]);
       if (missing.length === 0) return;
 
@@ -574,7 +601,7 @@ export default function PostDetail() {
           const signed = await presignKey(k);
           if (signed) nextMap[String(k)] = signed;
         } catch {
-          // ignore per-file errors, keep going
+          // ignore per-file errors
         }
       }
 
@@ -588,7 +615,65 @@ export default function PostDetail() {
     return () => {
       alive = false;
     };
-  }, [attachments, token, attachmentLinks]);
+  }, [attachments, token, attachmentLinks]); // keep as-is (works)
+
+  // ✅ NEW: load profiles (gateway) + presign avatars (file-service)
+  useEffect(() => {
+    let alive = true;
+
+    async function ensureUserLoaded(uid) {
+      const id = String(uid || "");
+      if (!id) return;
+      if (profilesById[id]) return;
+
+      const profile = await fetchUserProfile(id);
+      if (!alive) return;
+
+      setProfilesById((prev) => ({ ...prev, [id]: profile }));
+
+      const key = mediaKeyFromProfile(profile);
+      if (key && !avatarUrlById[id]) {
+        try {
+          const signed = await presignKey(key);
+          if (!alive) return;
+          if (signed) setAvatarUrlById((prev) => ({ ...prev, [id]: signed }));
+        } catch {
+          // ignore avatar errors
+        }
+      }
+    }
+
+    async function run() {
+      if (!token) return;
+
+      const ids = new Set();
+
+      const postUid = post?.userId ?? post?.authorId ?? post?.user?.id;
+      if (postUid != null) ids.add(String(postUid));
+
+      for (const r of Array.isArray(replies) ? replies : []) {
+        const rid = r?.userId ?? r?.authorId ?? r?.user?.id;
+        if (rid != null) ids.add(String(rid));
+      }
+
+      for (const id of ids) {
+        if (!alive) return;
+        if (!profilesById[id]) {
+          try {
+            await ensureUserLoaded(id);
+          } catch {
+            // ignore profile errors
+          }
+        }
+      }
+    }
+
+    run();
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [post, replies, token]);
 
   const replyTree = useMemo(() => {
     const looksNested = replies?.some?.(
@@ -695,8 +780,13 @@ export default function PostDetail() {
 
   const ReplyNode = ({ node, depth = 0 }) => {
     const id = getReplyId(node);
-    const name = getUserName(node);
-    const avatarUrl = getUserAvatarUrl(node);
+
+    const rid = String(getReplyOwnerId(node) || "");
+    const rp = rid ? profilesById[rid] : null;
+
+    const name = rp ? fullNameFromProfile(rp) : getUserName(node);
+    const avatarUrl = (rid && avatarUrlById[rid]) || getUserAvatarUrl(node);
+
     const createdAt = node?.createdAt;
     const updatedAt = getUpdatedAt(node);
 
@@ -790,15 +880,17 @@ export default function PostDetail() {
     );
   }
 
-  const postAuthorName = getUserName(post);
-  const postAuthorAvatar = getUserAvatarUrl(post);
-
-  // ✅ Renderable attachments: if url missing but key exists, use attachmentLinks[key]
-  const renderableAttachments = attachments.map((a) => {
+  const renderableAttachments = (attachments || []).map((a) => {
     const k = a.key ? String(a.key) : "";
     const signed = k ? attachmentLinks[k] : "";
     return { ...a, url: a.url || signed || "" };
   });
+
+  const postUid = String(getPostOwnerId(post) || "");
+  const postProfile = postUid ? profilesById[postUid] : null;
+
+  const postAuthorName = postProfile ? fullNameFromProfile(postProfile) : getUserName(post);
+  const postAuthorAvatar = (postUid && avatarUrlById[postUid]) || getUserAvatarUrl(post);
 
   return (
     <PageShell>
@@ -912,11 +1004,8 @@ export default function PostDetail() {
               </div>
             </header>
 
-            <article className="content">
-              {post?.content || post?.body || post?.description || ""}
-            </article>
+            <article className="content">{post?.content || post?.body || post?.description || ""}</article>
 
-            {/* ✅ Attachments + preview */}
             {renderableAttachments.length > 0 ? (
               <section className="attachments">
                 <h4>Attachments ({renderableAttachments.length})</h4>
@@ -926,7 +1015,11 @@ export default function PostDetail() {
                   const isImg = looksLikeImage(a.name, a.contentType);
 
                   return (
-                    <div key={a.id} className="attachment-item" style={{ flexDirection: "column", alignItems: "stretch" }}>
+                    <div
+                      key={a.id}
+                      className="attachment-item"
+                      style={{ flexDirection: "column", alignItems: "stretch" }}
+                    >
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
                         <div style={{ minWidth: 0 }}>
                           <div className="attachment-name" title={a.name}>
@@ -1007,11 +1100,7 @@ export default function PostDetail() {
                   disabled={!canReply}
                 />
                 <div className="btn-row">
-                  <button
-                    className="btn-black"
-                    onClick={handleCreateReply}
-                    disabled={!canReply || !replyText.trim()}
-                  >
+                  <button className="btn-black" onClick={handleCreateReply} disabled={!canReply || !replyText.trim()}>
                     {replyParentId ? "Reply" : "Respond"}
                   </button>
 

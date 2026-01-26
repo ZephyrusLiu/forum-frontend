@@ -13,35 +13,45 @@ export default function Home() {
   const [status, setStatus] = useState("idle");
   const [error, setError] = useState("");
 
-  // ✅ used to re-fetch after admin actions
   const [reloadKey, setReloadKey] = useState(0);
 
-  // ADMIN: 3 lists
-  // USER: only published list (+ my posts merged)
   const [publishedPosts, setPublishedPosts] = useState([]);
   const [bannedPosts, setBannedPosts] = useState([]);
   const [deletedPosts, setDeletedPosts] = useState([]);
 
-  // ✅ NEW: my posts for owner-only visibility (HIDDEN/UNPUBLISHED/BANNED)
   const [myPosts, setMyPosts] = useState([]);
 
-  // filters + sorting (shared)
+  // ✅ profile cache: userId -> profile
+  const [profilesById, setProfilesById] = useState(() => new Map());
+
+  // ✅ my profile for "Logged in as"
+  const [myProfile, setMyProfile] = useState(null);
+  const [profileStatus, setProfileStatus] = useState("idle");
+  const [profileError, setProfileError] = useState("");
+
   const [creatorQuery, setCreatorQuery] = useState("");
-  const [sortRepliesDir, setSortRepliesDir] = useState("desc"); // asc|desc
-  const [sortCreatedDir, setSortCreatedDir] = useState("desc"); // asc|desc
-  const [sortBy, setSortBy] = useState("replies"); // replies|created
+  const [sortRepliesDir, setSortRepliesDir] = useState("desc");
+  const [sortCreatedDir, setSortCreatedDir] = useState("desc");
+  const [sortBy, setSortBy] = useState("replies");
 
-  // admin section tab
-  const [adminTab, setAdminTab] = useState("published"); // published|banned|deleted
-
-  // button busy state (prevents double clicks)
+  const [adminTab, setAdminTab] = useState("published");
   const [actionBusyId, setActionBusyId] = useState("");
 
   const isAdmin = user?.type === "admin" || user?.type === "super";
   const canCreate =
     user?.status === "active" || user?.type === "admin" || user?.type === "super";
 
-  // ===== helpers =====
+  // ✅ stable current user id
+  const myId = user?.id ?? user?.userId ?? user?._id ?? user?.user?._id;
+
+  // ✅ reset cache when user changes (login as other user)
+  useEffect(() => {
+    setProfilesById(new Map());
+    setMyProfile(null);
+    setProfileStatus("idle");
+    setProfileError("");
+  }, [token, myId]);
+
   function getPostId(p) {
     const id = p?._id ?? p?.id ?? p?.postId;
     return id == null ? "" : String(id);
@@ -50,10 +60,6 @@ export default function Home() {
   function getStage(p) {
     const st = p?.stage ?? p?.status ?? p?.postStatus ?? "";
     return String(st).toUpperCase();
-  }
-
-  function getCreator(p) {
-    return p?.userName || p?.username || p?.authorName || p?.userId || "";
   }
 
   function getRepliesCount(p) {
@@ -70,14 +76,64 @@ export default function Home() {
     return Number.isFinite(t) ? t : 0;
   }
 
-  // ✅ stable current user id
-  const myId = user?.id ?? user?.userId ?? user?._id ?? user?.user?._id;
+  function getOwnerId(p) {
+    const ownerId =
+      p?.userId ?? p?.ownerId ?? p?.authorId ?? p?.user?.id ?? p?.user?._id;
+    return ownerId == null ? "" : String(ownerId);
+  }
 
-  // ✅ owner check (post.userId stored as "7" string)
   function isOwner(p) {
-    const ownerId = p?.userId ?? p?.ownerId ?? p?.authorId ?? p?.user?._id;
+    const ownerId = getOwnerId(p);
     if (!ownerId || !myId) return false;
     return String(ownerId) === String(myId);
+  }
+
+  function makeFullName(profile) {
+    const first = (profile?.firstName || "").trim();
+    const last = (profile?.lastName || "").trim();
+    return `${first} ${last}`.trim();
+  }
+
+  function getCreatorDisplay(p) {
+    const already =
+      p?.userName ||
+      p?.username ||
+      p?.authorName ||
+      p?.user?.userName ||
+      p?.user?.username ||
+      p?.user?.name;
+
+    if (already) return already;
+
+    const uid = getOwnerId(p);
+    if (!uid) return "Unknown";
+
+    const prof = profilesById.get(String(uid));
+    const full = makeFullName(prof);
+    if (full) return full;
+
+    return uid; // fallback until profile arrives
+  }
+
+  function matchesSearch(p, qLower) {
+    if (!qLower) return true;
+
+    const hay = [
+      p?.title,
+      p?.content,
+      p?.body,
+      getCreatorDisplay(p),
+      p?.userId,
+      p?._id,
+      p?.id,
+      p?.postId,
+      getStage(p),
+    ]
+      .filter(Boolean)
+      .map((x) => String(x).toLowerCase())
+      .join(" ");
+
+    return hay.includes(qLower);
   }
 
   function getLinkTo(p) {
@@ -86,24 +142,24 @@ export default function Home() {
 
     const stage = getStage(p);
 
-    // drafts -> edit page
     if (stage === "UNPUBLISHED" || stage === "DRAFT") {
       return `/posts/create?draftId=${encodeURIComponent(id)}`;
     }
 
-    // everything else -> detail page
     return `/posts/${encodeURIComponent(id)}`;
   }
 
   function TitleLink({ post }) {
     const to = getLinkTo(post);
     const title = post?.title || "(Untitled)";
-    if (!to)
+
+    if (!to) {
       return (
         <span className="muted">
           <b>{title}</b>
         </span>
       );
+    }
 
     return (
       <Link className="link" to={to}>
@@ -112,7 +168,42 @@ export default function Home() {
     );
   }
 
-  // ===== Admin API actions =====
+  // ===== Profile fetch (my profile) =====
+  async function fetchMyProfile({ signal } = {}) {
+    if (!token || !myId) return;
+
+    setProfileStatus("loading");
+    setProfileError("");
+
+    try {
+      const raw = await apiRequest("GET", endpoints.userProfile(myId), token);
+      const data = unwrapResult(raw);
+
+      if (signal?.aborted) return;
+
+      setMyProfile(data || null);
+      setProfileStatus("succeeded");
+
+      // ✅ cache myself too
+      setProfilesById((prev) => {
+        const next = new Map(prev);
+        next.set(String(myId), data || null);
+        return next;
+      });
+    } catch (e) {
+      if (signal?.aborted) return;
+      setMyProfile(null);
+      setProfileError(e?.message || "Failed to load profile");
+      setProfileStatus("failed");
+    }
+  }
+
+  useEffect(() => {
+    const ctrl = new AbortController();
+    fetchMyProfile({ signal: ctrl.signal });
+    return () => ctrl.abort();
+  }, [token, myId]);
+
   async function doBan(postId) {
     const raw = await apiRequest("POST", endpoints.banPost(postId), token);
     return unwrapResult(raw);
@@ -126,18 +217,14 @@ export default function Home() {
     return unwrapResult(raw);
   }
 
-  // ===== Fetch lists =====
   async function fetchLists({ signal } = {}) {
     setStatus("loading");
     setError("");
 
     try {
-      // ✅ USER MODE (non-admin):
-      // fetch public published + my posts, then merge in UI
       if (!isAdmin) {
         const [rawPublished, rawMine] = await Promise.all([
           apiRequest("GET", endpoints.listPublishedPosts(), token),
-          // ✅ needs endpoint: getMyPosts: () => `/api/posts/me`
           apiRequest("GET", endpoints.getMyPosts(), token),
         ]);
 
@@ -163,7 +250,6 @@ export default function Home() {
         return;
       }
 
-      // ✅ ADMIN MODE (unchanged)
       const [rawAll, rawBanned, rawDeleted] = await Promise.all([
         apiRequest("GET", endpoints.listAllPosts(), token),
         apiRequest("GET", endpoints.adminBannedPosts(), token),
@@ -189,7 +275,7 @@ export default function Home() {
       setPublishedPosts(allList.filter((p) => getStage(p) === "PUBLISHED"));
       setBannedPosts(bannedList);
       setDeletedPosts(deletedList);
-      setMyPosts([]); // admin doesn’t need my list
+      setMyPosts([]);
 
       setStatus("succeeded");
     } catch (e) {
@@ -199,20 +285,18 @@ export default function Home() {
     }
   }
 
-  // reload lists (initial + after actions)
   useEffect(() => {
     const ctrl = new AbortController();
     fetchLists({ signal: ctrl.signal });
     return () => ctrl.abort();
   }, [token, isAdmin, reloadKey]);
 
-  // shared filter+sort
   const applyFilterSort = useMemo(() => {
     return (list) => {
       let out = Array.isArray(list) ? [...list] : [];
 
-      const q = creatorQuery.trim().toLowerCase();
-      if (q) out = out.filter((p) => String(getCreator(p)).toLowerCase().includes(q));
+      const qLower = creatorQuery.trim().toLowerCase();
+      if (qLower) out = out.filter((p) => matchesSearch(p, qLower));
 
       out.sort((a, b) => {
         const ar = getRepliesCount(a);
@@ -231,18 +315,12 @@ export default function Home() {
 
       return out;
     };
-  }, [creatorQuery, sortRepliesDir, sortCreatedDir, sortBy]);
+  }, [creatorQuery, sortRepliesDir, sortCreatedDir, sortBy, profilesById]);
 
-  // ✅ USER VISIBLE:
-  // - always show PUBLISHED
-  // - additionally show my HIDDEN + my UNPUBLISHED + my BANNED
-  // - never show other people's HIDDEN/BANNED
-  // - DELETED hidden for normal users (change if you want owner to see it)
   const userVisiblePosts = useMemo(() => {
     const pub = Array.isArray(publishedPosts) ? publishedPosts : [];
     const mine = Array.isArray(myPosts) ? myPosts : [];
 
-    // merge unique by id
     const map = new Map();
     for (const p of pub) {
       const id = getPostId(p);
@@ -258,20 +336,14 @@ export default function Home() {
     const visible = merged.filter((p) => {
       const st = getStage(p);
 
-      // anyone sees published
       if (st === "PUBLISHED") return true;
 
-      // owner-only stages
       if (st === "HIDDEN" || st === "UNPUBLISHED" || st === "DRAFT") {
         return isOwner(p);
       }
 
-      // ✅ NEW: banned visible to owner
-      if (st === "BANNED") {
-        return isOwner(p);
-      }
+      if (st === "BANNED") return isOwner(p);
 
-      // keep deleted hidden for normal users
       if (st === "DELETED") return false;
 
       return false;
@@ -280,7 +352,6 @@ export default function Home() {
     return applyFilterSort(visible);
   }, [applyFilterSort, publishedPosts, myPosts, myId]);
 
-  // ADMIN lists
   const adminPublishedVisible = useMemo(
     () => applyFilterSort(publishedPosts),
     [applyFilterSort, publishedPosts]
@@ -294,6 +365,71 @@ export default function Home() {
     [applyFilterSort, deletedPosts]
   );
 
+  // ✅ fetch profiles for all userIds appearing in current lists
+  useEffect(() => {
+    if (!token) return;
+    if (status !== "succeeded") return;
+
+    const listForScreen = isAdmin
+      ? adminTab === "published"
+        ? adminPublishedVisible
+        : adminTab === "banned"
+          ? adminBannedVisible
+          : adminDeletedVisible
+      : userVisiblePosts;
+
+    const ids = new Set();
+    for (const p of listForScreen || []) {
+      const uid = getOwnerId(p);
+      if (uid) ids.add(String(uid));
+    }
+
+    const missing = [];
+    for (const id of ids) {
+      if (!profilesById.has(id)) missing.push(id);
+    }
+    if (missing.length === 0) return;
+
+    let cancelled = false;
+
+    (async () => {
+      const results = await Promise.all(
+        missing.map(async (id) => {
+          try {
+            // ✅ FIX: apiRequest has no 4th arg for signal/options
+            const raw = await apiRequest("GET", endpoints.userProfile(id), token);
+            const data = unwrapResult(raw);
+            return [id, data || null];
+          } catch {
+            return [id, null];
+          }
+        })
+      );
+
+      if (cancelled) return;
+
+      setProfilesById((prev) => {
+        const next = new Map(prev);
+        for (const [id, prof] of results) next.set(String(id), prof);
+        return next;
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    token,
+    status,
+    isAdmin,
+    adminTab,
+    userVisiblePosts,
+    adminPublishedVisible,
+    adminBannedVisible,
+    adminDeletedVisible,
+    profilesById,
+  ]);
+
   function resetFilters() {
     setCreatorQuery("");
     setSortRepliesDir("desc");
@@ -301,7 +437,6 @@ export default function Home() {
     setSortBy("replies");
   }
 
-  // action cell
   function AdminActionCell({ post, mode }) {
     const pid = getPostId(post);
     const stage = getStage(post);
@@ -357,7 +492,6 @@ export default function Home() {
       );
     }
 
-    // deleted -> recover
     return (
       <button
         className="btn btn--secondary"
@@ -406,7 +540,7 @@ export default function Home() {
 
               <div className="muted">
                 <span>
-                  by <b>{getCreator(p) || "Unknown"}</b>
+                  by <b>{getCreatorDisplay(p) || "Unknown"}</b>
                 </span>
                 <span className="dot">•</span>
                 <span>{formatDate(p.dateCreated || p.createdAt || p.created_at)}</span>
@@ -420,13 +554,28 @@ export default function Home() {
     );
   }
 
+  const myDisplayName =
+    makeFullName(myProfile) ||
+    user?.userName ||
+    user?.username ||
+    user?.name ||
+    user?.userId ||
+    "";
+
   return (
     <PageShell title="/home" subtitle={null}>
       <div className="row">
         <div className="muted">
-          Logged in as <b>{user?.userId}</b>
+          Logged in as <b>{myDisplayName || "Unknown"}</b>
+          {profileStatus === "loading" ? (
+            <span className="muted" style={{ marginLeft: 8 }}>
+              (loading profile…)
+            </span>
+          ) : null}
         </div>
+
         <div className="spacer" />
+
         {canCreate ? (
           <button className="btn" onClick={() => navigate("/posts/create")}>
             Create Post
@@ -434,13 +583,18 @@ export default function Home() {
         ) : null}
       </div>
 
-      {/* Shared Controls */}
+      {profileStatus === "failed" ? (
+        <div className="muted" style={{ marginTop: 6 }}>
+          Profile error: {profileError}
+        </div>
+      ) : null}
+
       <div className="row" style={{ marginTop: 12, gap: 8, flexWrap: "wrap" }}>
         <input
           className="input"
           value={creatorQuery}
           onChange={(e) => setCreatorQuery(e.target.value)}
-          placeholder="Filter by creator (username/userId)"
+          placeholder="Search (title/content/creator/userId)"
           style={{ minWidth: 260 }}
         />
 
