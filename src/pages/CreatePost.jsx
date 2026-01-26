@@ -15,21 +15,22 @@ export default function CreatePost() {
 
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
+
+  // ✅ keep original structure: still an array, but we store only ONE uploaded image URL
   const [attachmentUrls, setAttachmentUrls] = useState(['']);
+
   const [status, setStatus] = useState('idle');
   const [error, setError] = useState('');
+
+  // ✅ upload state
+  const [imageFile, setImageFile] = useState(null);
+  const [uploading, setUploading] = useState(false);
 
   // IMPORTANT: publishing requires email verified (requireEmailVerified)
   const canPublish =
     user?.status === 'active' || user?.type === 'admin' || user?.type === 'super';
 
-  const updateUrl = (idx, val) => {
-    setAttachmentUrls((arr) => arr.map((x, i) => (i === idx ? val : x)));
-  };
-
-  const addUrl = () => setAttachmentUrls((arr) => [...arr, '']);
-  const removeUrl = (idx) =>
-    setAttachmentUrls((arr) => arr.filter((_, i) => i !== idx));
+  const removeImage = () => setAttachmentUrls(['']); // clear
 
   // Prefill when editing a draft
   useEffect(() => {
@@ -53,7 +54,9 @@ export default function CreatePost() {
         const urls =
           d?.attachments ?? d?.images ?? d?.imageUrls ?? d?.attachmentUrls ?? [];
 
-        setAttachmentUrls(Array.isArray(urls) && urls.length ? urls : ['']);
+        const first = Array.isArray(urls) && urls.length ? String(urls[0] ?? '') : '';
+        setAttachmentUrls([first || '']);
+
         setStatus('idle');
       } catch (e) {
         if (ignore) return;
@@ -69,12 +72,12 @@ export default function CreatePost() {
   }, [draftId, token]);
 
   function buildDraftPayload() {
-    const urls = attachmentUrls.map((x) => x.trim()).filter(Boolean);
+    const url = (attachmentUrls?.[0] ?? '').trim();
+    const urls = url ? [url] : [];
 
     const t = title.trim();
     const c = content.trim();
 
-    // match backend validation: title/content required
     if (!t) throw new Error('title is required');
     if (!c) throw new Error('content is required');
 
@@ -85,6 +88,55 @@ export default function CreatePost() {
       isArchived: false,
       attachments: urls,
     };
+  }
+
+  async function uploadImageToS3() {
+    if (!imageFile) {
+      setError('Choose an image file first.');
+      return;
+    }
+
+    setError('');
+    setUploading(true);
+
+    try {
+      const raw = await apiRequest(
+        'POST',
+        endpoints.requestImageUpload(),
+        token,
+        {
+          filename: imageFile.name,
+          contentType: imageFile.type || 'application/octet-stream',
+        }
+      );
+
+      const data = unwrapResult(raw);
+      const uploadUrl = data?.uploadUrl;
+      const fileUrl = data?.fileUrl;
+
+      if (!uploadUrl || !fileUrl) {
+        throw new Error('File service did not return uploadUrl/fileUrl');
+      }
+
+      const putRes = await fetch(uploadUrl, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': imageFile.type || 'application/octet-stream',
+        },
+        body: imageFile,
+      });
+
+      if (!putRes.ok) {
+        throw new Error(`S3 upload failed (${putRes.status})`);
+      }
+
+      setAttachmentUrls([fileUrl]);
+      setImageFile(null);
+    } catch (e) {
+      setError(e?.message || 'Failed to upload image');
+    } finally {
+      setUploading(false);
+    }
   }
 
   async function saveDraft() {
@@ -114,7 +166,6 @@ export default function CreatePost() {
     }
   }
 
-  // Publish existing draft (POST /posts/:postId/publish)
   async function publishPost() {
     if (!draftId) {
       setError('Save the draft first before publishing.');
@@ -141,6 +192,7 @@ export default function CreatePost() {
   }
 
   const isLoading = status === 'loading';
+  const imageUrl = (attachmentUrls?.[0] ?? '').trim();
 
   return (
     <PageShell
@@ -169,34 +221,47 @@ export default function CreatePost() {
           />
         </label>
 
-        <div className="label">Attachments / Image URLs (optional)</div>
-        <div className="stack">
-          {attachmentUrls.map((u, idx) => (
-            <div key={idx} className="row">
-              <input
-                className="input"
-                value={u}
-                onChange={(e) => updateUrl(idx, e.target.value)}
-                placeholder="https://..."
+        {/* ✅ upload only (no URL input) */}
+        <div className="label">Image (optional) — upload one</div>
+
+        <div className="stack" style={{ marginTop: 12 }}>
+          <div className="row">
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(e) => setImageFile(e.target.files?.[0] ?? null)}
+              disabled={isLoading || uploading}
+            />
+
+            <button
+              className="btn btn--ghost"
+              type="button"
+              onClick={uploadImageToS3}
+              disabled={isLoading || uploading || !imageFile}
+            >
+              {uploading ? 'Uploading…' : 'Upload to S3'}
+            </button>
+
+            <button
+              className="btn btn--ghost"
+              type="button"
+              onClick={removeImage}
+              disabled={isLoading || uploading || !imageUrl}
+            >
+              Remove
+            </button>
+          </div>
+
+          {imageUrl ? (
+            <div className="stack">
+              <div className="label">Preview</div>
+              <img
+                src={imageUrl}
+                alt="attachment"
+                style={{ maxWidth: '100%', borderRadius: 10 }}
               />
-              <button
-                className="btn btn--ghost"
-                type="button"
-                onClick={() => removeUrl(idx)}
-                disabled={attachmentUrls.length === 1 || isLoading}
-              >
-                Remove
-              </button>
             </div>
-          ))}
-          <button
-            className="btn btn--ghost"
-            type="button"
-            onClick={addUrl}
-            disabled={isLoading}
-          >
-            + Add URL
-          </button>
+          ) : null}
         </div>
 
         {error ? <div className="error">Error: {error}</div> : null}
@@ -206,7 +271,7 @@ export default function CreatePost() {
             className="btn btn--ghost"
             type="button"
             onClick={() => navigate('/home')}
-            disabled={isLoading}
+            disabled={isLoading || uploading}
           >
             Cancel
           </button>
@@ -216,7 +281,7 @@ export default function CreatePost() {
           <button
             className="btn btn--ghost"
             type="button"
-            disabled={isLoading || !draftId || !canPublish}
+            disabled={isLoading || uploading || !draftId || !canPublish}
             onClick={publishPost}
             title={!draftId ? 'Save draft first' : undefined}
           >
@@ -226,7 +291,7 @@ export default function CreatePost() {
           <button
             className="btn"
             type="button"
-            disabled={isLoading}
+            disabled={isLoading || uploading}
             onClick={saveDraft}
           >
             {isLoading ? 'Saving…' : draftId ? 'Update Draft' : 'Save Draft'}
