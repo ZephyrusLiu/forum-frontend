@@ -24,7 +24,7 @@ function buildAuthHeader(token) {
 
 export async function apiRequest(method, path, token, body) {
   const headers = { 'Content-Type': 'application/json' };
-  const base_url = getBaseURL(path);
+  const base_url = getBaseURL();
 
   const auth = buildAuthHeader(token);
   if (auth) headers.Authorization = auth;

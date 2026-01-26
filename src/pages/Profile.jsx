@@ -17,6 +17,9 @@ export default function Profile() {
   const [topPosts, setTopPosts] = useState([]);
   const [drafts, setDrafts] = useState([]);
   const [history, setHistory] = useState([]);
+  const [historyKeyword, setHistoryKeyword] = useState('');
+  const [historyStatus, setHistoryStatus] = useState('idle');
+  const [historyError, setHistoryError] = useState('');
 
   const [editImage, setEditImage] = useState('');
   const [editEmail, setEditEmail] = useState('');
@@ -74,6 +77,8 @@ export default function Profile() {
         if (ignore) return;
         setError(e?.message || 'Failed to load profile');
         setStatus('failed');
+        setHistoryStatus('failed');
+        setHistoryError(e?.message || 'Failed to load history');
       }
     }
 
@@ -85,6 +90,21 @@ export default function Profile() {
       ignore = true;
     };
   }, [profileUserId, token]);
+
+  const onSearchHistory = async (e) => {
+    e.preventDefault();
+    setHistoryStatus('loading');
+    setHistoryError('');
+    try {
+      const raw = await apiRequest('GET', endpoints.listHistory(historyKeyword), token);
+      const historyList = unwrapResult(raw);
+      setHistory(Array.isArray(historyList) ? historyList : historyList?.items || []);
+      setHistoryStatus('succeeded');
+    } catch (err) {
+      setHistoryStatus('failed');
+      setHistoryError(err?.message || 'Failed to search history');
+    }
+  };
 
   const filteredHistory = useMemo(() => {
     return history
@@ -270,6 +290,18 @@ export default function Profile() {
             <div className="title" style={{ marginTop: 0 }}>
               View History (Published)
             </div>
+            <form className="row" onSubmit={onSearchHistory}>
+              <input
+                className="input"
+                value={historyKeyword}
+                onChange={(e) => setHistoryKeyword(e.target.value)}
+                placeholder="Search history keyword"
+              />
+              <button className="btn" type="submit" disabled={historyStatus === 'loading'}>
+                {historyStatus === 'loading' ? 'Searching…' : 'Search'}
+              </button>
+            </form>
+            {historyStatus === 'failed' ? <div className="error">{historyError}</div> : null}
             {filteredHistory.length === 0 ? (
               <div className="muted">No history yet.</div>
             ) : (

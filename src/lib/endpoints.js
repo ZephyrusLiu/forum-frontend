@@ -61,11 +61,15 @@ unhidePost: (postId) => `/api/posts/${postId}/unhide`,
   adminUpdateUserStatus: (userId) => `/users/${userId}/status`,
   adminUpdateUserRole: (userId) => `/users/${userId}/role`,
   adminListMessages: () => '/messages',
-  adminUpdateMessageStatus: (messageId) => `/messages/${messageId}/status`,
+  adminUpdateMessageStatus: (messageId) => `/messages/${messageId}`,
+
+  // Message service
+  createContactMessage: () => '/contactus',
 
   // History service
   createHistory: () => '/history',
-  listHistory: () => '/history',
+  listHistory: (keyword) =>
+    keyword ? `/history?keyword=${encodeURIComponent(keyword)}` : '/history',
 };
 
 // Normalize backend responses (some services might wrap payloads as {result: ...})
