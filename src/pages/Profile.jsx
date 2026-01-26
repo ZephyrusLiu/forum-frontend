@@ -28,7 +28,7 @@ export default function Profile() {
 
   const profileUserId = id || user?.userId;
 
-  // ===== helpers (FIXED for your backend shape) =====
+  // ===== helpers =====
   function getPostId(p) {
     const pid = p?._id ?? p?.id ?? p?.postId;
     return pid == null ? '' : String(pid);
@@ -52,11 +52,11 @@ export default function Profile() {
       setError('');
 
       try {
-        const [profileRaw, topRaw, draftRaw] = await Promise.all([
+        const [profileRaw, topRaw, draftRaw, historyRaw] = await Promise.all([
           apiRequest('GET', endpoints.userProfile(profileUserId), token),
           apiRequest('GET', endpoints.top3MyPosts(), token),
           apiRequest('GET', endpoints.myDraftPosts(), token),
-          // apiRequest('GET', endpoints.listHistory(), token),
+          apiRequest('GET', endpoints.listHistory(), token),
         ]);
 
         if (ignore) return;
@@ -71,6 +71,10 @@ export default function Profile() {
 
         const draftList = unwrapResult(draftRaw);
         setDrafts(Array.isArray(draftList) ? draftList : draftList?.items || []);
+
+        const historyList = unwrapResult(historyRaw);
+        setHistory(Array.isArray(historyList) ? historyList : historyList?.items || []);
+        setHistoryStatus('succeeded');
 
         setStatus('succeeded');
       } catch (e) {
