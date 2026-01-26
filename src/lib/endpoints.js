@@ -41,6 +41,8 @@ unarchivePost: (postId) => `/api/posts/${postId}/unarchive`,
 hidePost: (postId) => `/api/posts/${postId}/hide`,
 unhidePost: (postId) => `/api/posts/${postId}/unhide`,
 
+  // File service (direct)
+  requestImageUpload: () => 'http://localhost:5005/files/upload',
 
 
 

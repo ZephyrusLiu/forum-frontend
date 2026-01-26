@@ -22,8 +22,8 @@ export default function Home() {
   const [bannedPosts, setBannedPosts] = useState([]);
   const [deletedPosts, setDeletedPosts] = useState([]);
 
-  // ✅ NEW: my posts for owner-only visibility (HIDDEN/UNPUBLISHED)
-  const [myPosts, setMyPosts] = useState([]); // ✅ NEW
+  // ✅ NEW: my posts for owner-only visibility (HIDDEN/UNPUBLISHED/BANNED)
+  const [myPosts, setMyPosts] = useState([]);
 
   // filters + sorting (shared)
   const [creatorQuery, setCreatorQuery] = useState("");
@@ -70,10 +70,10 @@ export default function Home() {
     return Number.isFinite(t) ? t : 0;
   }
 
-  // ✅ NEW: stable current user id
-  const myId = user?.id ?? user?.userId ?? user?._id ?? user?.user?._id; // ✅ NEW
+  // ✅ stable current user id
+  const myId = user?.id ?? user?.userId ?? user?._id ?? user?.user?._id;
 
-  // ✅ NEW: owner check for post.userId stored as "7" string
+  // ✅ owner check (post.userId stored as "7" string)
   function isOwner(p) {
     const ownerId = p?.userId ?? p?.ownerId ?? p?.authorId ?? p?.user?._id;
     if (!ownerId || !myId) return false;
@@ -98,11 +98,12 @@ export default function Home() {
   function TitleLink({ post }) {
     const to = getLinkTo(post);
     const title = post?.title || "(Untitled)";
-    if (!to) return (
-      <span className="muted">
-        <b>{title}</b>
-      </span>
-    );
+    if (!to)
+      return (
+        <span className="muted">
+          <b>{title}</b>
+        </span>
+      );
 
     return (
       <Link className="link" to={to}>
@@ -136,9 +137,8 @@ export default function Home() {
       if (!isAdmin) {
         const [rawPublished, rawMine] = await Promise.all([
           apiRequest("GET", endpoints.listPublishedPosts(), token),
-          // ✅ NEW: need this endpoint in endpoints.js
-          // getMyPosts: () => `/api/posts/me`
-          apiRequest("GET", endpoints.getMyPosts(), token), // ✅ NEW
+          // ✅ needs endpoint: getMyPosts: () => `/api/posts/me`
+          apiRequest("GET", endpoints.getMyPosts(), token),
         ]);
 
         if (signal?.aborted) return;
@@ -155,7 +155,7 @@ export default function Home() {
           : mineData?.items || mineData?.posts || [];
 
         setPublishedPosts(pubList);
-        setMyPosts(mineList); // ✅ NEW
+        setMyPosts(mineList);
 
         setBannedPosts([]);
         setDeletedPosts([]);
@@ -176,7 +176,9 @@ export default function Home() {
       const bannedData = unwrapResult(rawBanned);
       const deletedData = unwrapResult(rawDeleted);
 
-      const allList = Array.isArray(allData) ? allData : allData?.items || allData?.posts || [];
+      const allList = Array.isArray(allData)
+        ? allData
+        : allData?.items || allData?.posts || [];
       const bannedList = Array.isArray(bannedData)
         ? bannedData
         : bannedData?.items || bannedData?.posts || [];
@@ -187,7 +189,7 @@ export default function Home() {
       setPublishedPosts(allList.filter((p) => getStage(p) === "PUBLISHED"));
       setBannedPosts(bannedList);
       setDeletedPosts(deletedList);
-      setMyPosts([]); // ✅ NEW (admin doesn’t need this list)
+      setMyPosts([]); // admin doesn’t need my list
 
       setStatus("succeeded");
     } catch (e) {
@@ -233,8 +235,9 @@ export default function Home() {
 
   // ✅ USER VISIBLE:
   // - always show PUBLISHED
-  // - additionally show my HIDDEN + my UNPUBLISHED
-  // - never show other people's HIDDEN
+  // - additionally show my HIDDEN + my UNPUBLISHED + my BANNED
+  // - never show other people's HIDDEN/BANNED
+  // - DELETED hidden for normal users (change if you want owner to see it)
   const userVisiblePosts = useMemo(() => {
     const pub = Array.isArray(publishedPosts) ? publishedPosts : [];
     const mine = Array.isArray(myPosts) ? myPosts : [];
@@ -255,21 +258,29 @@ export default function Home() {
     const visible = merged.filter((p) => {
       const st = getStage(p);
 
+      // anyone sees published
       if (st === "PUBLISHED") return true;
 
-      // owner-only:
+      // owner-only stages
       if (st === "HIDDEN" || st === "UNPUBLISHED" || st === "DRAFT") {
         return isOwner(p);
       }
 
-      // do not show BANNED/DELETED to normal user
+      // ✅ NEW: banned visible to owner
+      if (st === "BANNED") {
+        return isOwner(p);
+      }
+
+      // keep deleted hidden for normal users
+      if (st === "DELETED") return false;
+
       return false;
     });
 
     return applyFilterSort(visible);
-  }, [applyFilterSort, publishedPosts, myPosts, myId]); // ✅ NEW dependencies
+  }, [applyFilterSort, publishedPosts, myPosts, myId]);
 
-  // ADMIN lists (unchanged)
+  // ADMIN lists
   const adminPublishedVisible = useMemo(
     () => applyFilterSort(publishedPosts),
     [applyFilterSort, publishedPosts]
@@ -386,7 +397,9 @@ export default function Home() {
                   <TitleLink post={p} />
                 </div>
 
-                <span className="pill">{getStage(p) || (mode || "PUBLISHED").toUpperCase()}</span>
+                <span className="pill">
+                  {getStage(p) || (mode || "PUBLISHED").toUpperCase()}
+                </span>
 
                 {isAdmin ? <AdminActionCell post={p} mode={mode} /> : null}
               </div>

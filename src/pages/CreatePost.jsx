@@ -15,21 +15,27 @@ export default function CreatePost() {
 
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
-  const [attachmentUrls, setAttachmentUrls] = useState(['']);
+
+  // ✅ store S3 KEY in DB, but show SIGNED URL in preview
+  const [attachmentKeys, setAttachmentKeys] = useState(['']); // DB value (key)
+  const [previewUrl, setPreviewUrl] = useState(''); // UI only (signed url)
+
   const [status, setStatus] = useState('idle');
   const [error, setError] = useState('');
 
-  // IMPORTANT: publishing requires email verified (requireEmailVerified)
+  // upload state
+  const [imageFile, setImageFile] = useState(null);
+  const [uploading, setUploading] = useState(false);
+
+  // publishing requires email verified (requireEmailVerified)
   const canPublish =
     user?.status === 'active' || user?.type === 'admin' || user?.type === 'super';
 
-  const updateUrl = (idx, val) => {
-    setAttachmentUrls((arr) => arr.map((x, i) => (i === idx ? val : x)));
+  const removeImage = () => {
+    setAttachmentKeys(['']);
+    setPreviewUrl('');
+    setImageFile(null);
   };
-
-  const addUrl = () => setAttachmentUrls((arr) => [...arr, '']);
-  const removeUrl = (idx) =>
-    setAttachmentUrls((arr) => arr.filter((_, i) => i !== idx));
 
   // Prefill when editing a draft
   useEffect(() => {
@@ -50,10 +56,32 @@ export default function CreatePost() {
         setTitle(d?.title ?? '');
         setContent(d?.content ?? '');
 
-        const urls =
+        const arr =
           d?.attachments ?? d?.images ?? d?.imageUrls ?? d?.attachmentUrls ?? [];
 
-        setAttachmentUrls(Array.isArray(urls) && urls.length ? urls : ['']);
+        const firstKey =
+          Array.isArray(arr) && arr.length ? String(arr[0] ?? '') : '';
+
+        // ✅ treat attachments[0] as KEY in DB
+        setAttachmentKeys([firstKey || '']);
+
+        // ✅ if we already have a key, fetch a fresh signed URL for preview
+        if (firstKey) {
+          try {
+            const urlRaw = await fetch(
+              `http://localhost:5005/files/url?key=${encodeURIComponent(firstKey)}`,
+              { headers: { Authorization: `Bearer ${token}` } }
+            );
+            const urlData = await urlRaw.json().catch(() => ({}));
+            if (urlRaw.ok && urlData?.url) setPreviewUrl(urlData.url);
+            else setPreviewUrl('');
+          } catch {
+            setPreviewUrl('');
+          }
+        } else {
+          setPreviewUrl('');
+        }
+
         setStatus('idle');
       } catch (e) {
         if (ignore) return;
@@ -69,12 +97,12 @@ export default function CreatePost() {
   }, [draftId, token]);
 
   function buildDraftPayload() {
-    const urls = attachmentUrls.map((x) => x.trim()).filter(Boolean);
+    const key = (attachmentKeys?.[0] ?? '').trim();
+    const keys = key ? [key] : [];
 
     const t = title.trim();
     const c = content.trim();
 
-    // match backend validation: title/content required
     if (!t) throw new Error('title is required');
     if (!c) throw new Error('content is required');
 
@@ -83,8 +111,61 @@ export default function CreatePost() {
       content: c,
       stage: 'UNPUBLISHED',
       isArchived: false,
-      attachments: urls,
+      attachments: keys, // ✅ store KEY in DB
     };
+  }
+
+  // ✅ Upload via FILE SERVICE (server uploads to S3) -> returns { key, url }
+  // We store key in DB, and use url (signed) only for preview
+  async function uploadImageToS3() {
+    if (!imageFile) {
+      setError('Choose an image file first.');
+      return;
+    }
+
+    if (!draftId) {
+      setError('Save draft first (need draftId before uploading image).');
+      return;
+    }
+
+    setError('');
+    setUploading(true);
+
+    try {
+      const fd = new FormData();
+      fd.append('file', imageFile); // multer expects "file"
+      fd.append('scope', 'posts');
+      fd.append('postId', String(draftId));
+
+      const res = await fetch('http://localhost:5005/files/upload', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: fd,
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.error?.message || data?.message || 'Upload failed');
+      }
+
+      // After your controller change, it should return:
+      // { key, url: signedUrl, expiresIn, publicUrl }
+      const key = data?.key || data?.result?.key;
+      const signedUrl = data?.url || data?.result?.url;
+
+      if (!key) throw new Error('Upload ok but no key returned');
+      if (!signedUrl) throw new Error('Upload ok but no signed url returned');
+
+      setAttachmentKeys([String(key)]);
+      setPreviewUrl(String(signedUrl));
+      setImageFile(null);
+    } catch (e) {
+      setError(e?.message || 'Failed to upload image');
+    } finally {
+      setUploading(false);
+    }
   }
 
   async function saveDraft() {
@@ -114,7 +195,6 @@ export default function CreatePost() {
     }
   }
 
-  // Publish existing draft (POST /posts/:postId/publish)
   async function publishPost() {
     if (!draftId) {
       setError('Save the draft first before publishing.');
@@ -141,6 +221,7 @@ export default function CreatePost() {
   }
 
   const isLoading = status === 'loading';
+  const hasImage = Boolean((attachmentKeys?.[0] ?? '').trim());
 
   return (
     <PageShell
@@ -169,34 +250,47 @@ export default function CreatePost() {
           />
         </label>
 
-        <div className="label">Attachments / Image URLs (optional)</div>
-        <div className="stack">
-          {attachmentUrls.map((u, idx) => (
-            <div key={idx} className="row">
-              <input
-                className="input"
-                value={u}
-                onChange={(e) => updateUrl(idx, e.target.value)}
-                placeholder="https://..."
+        <div className="label">Image (optional) — upload one</div>
+
+        <div className="stack" style={{ marginTop: 12 }}>
+          <div className="row">
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(e) => setImageFile(e.target.files?.[0] ?? null)}
+              disabled={isLoading || uploading}
+            />
+
+            <button
+              className="btn btn--ghost"
+              type="button"
+              onClick={uploadImageToS3}
+              disabled={isLoading || uploading || !imageFile}
+              title={!draftId ? 'Save draft first to get an id' : undefined}
+            >
+              {uploading ? 'Uploading…' : 'Upload'}
+            </button>
+
+            <button
+              className="btn btn--ghost"
+              type="button"
+              onClick={removeImage}
+              disabled={isLoading || uploading || !hasImage}
+            >
+              Remove
+            </button>
+          </div>
+
+          {previewUrl ? (
+            <div className="stack">
+              <div className="label">Preview</div>
+              <img
+                src={previewUrl}
+                alt="attachment"
+                style={{ maxWidth: '100%', borderRadius: 10 }}
               />
-              <button
-                className="btn btn--ghost"
-                type="button"
-                onClick={() => removeUrl(idx)}
-                disabled={attachmentUrls.length === 1 || isLoading}
-              >
-                Remove
-              </button>
             </div>
-          ))}
-          <button
-            className="btn btn--ghost"
-            type="button"
-            onClick={addUrl}
-            disabled={isLoading}
-          >
-            + Add URL
-          </button>
+          ) : null}
         </div>
 
         {error ? <div className="error">Error: {error}</div> : null}
@@ -206,7 +300,7 @@ export default function CreatePost() {
             className="btn btn--ghost"
             type="button"
             onClick={() => navigate('/home')}
-            disabled={isLoading}
+            disabled={isLoading || uploading}
           >
             Cancel
           </button>
@@ -216,7 +310,7 @@ export default function CreatePost() {
           <button
             className="btn btn--ghost"
             type="button"
-            disabled={isLoading || !draftId || !canPublish}
+            disabled={isLoading || uploading || !draftId || !canPublish}
             onClick={publishPost}
             title={!draftId ? 'Save draft first' : undefined}
           >
@@ -226,7 +320,7 @@ export default function CreatePost() {
           <button
             className="btn"
             type="button"
-            disabled={isLoading}
+            disabled={isLoading || uploading}
             onClick={saveDraft}
           >
             {isLoading ? 'Saving…' : draftId ? 'Update Draft' : 'Save Draft'}

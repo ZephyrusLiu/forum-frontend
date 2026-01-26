@@ -1,4 +1,3 @@
-
 function shouldUseMock() {
   if (typeof window === 'undefined') return false;
   return (
@@ -30,7 +29,11 @@ export async function apiRequest(method, path, token, body) {
   const auth = buildAuthHeader(token);
   if (auth) headers.Authorization = auth;
 
-  const res = await fetch(`${base_url}${path}`, {
+  // ✅ minimal fix: if path is an absolute URL, don't prefix with base_url
+  const isAbsolute = /^https?:\/\//i.test(path);
+  const url = isAbsolute ? path : `${base_url}${path}`;
+
+  const res = await fetch(url, {
     method,
     headers,
     body: body ? JSON.stringify(body) : undefined,
