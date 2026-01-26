@@ -1,17 +1,20 @@
 
-function shouldUseMock() {
-  if (typeof window === 'undefined') return false;
-  return (
-    import.meta.env.VITE_USE_MOCK === 'true' ||
-    new URLSearchParams(window.location.search).get('mock') === '1'
-  );
+function getBaseURL(path) {
+  const active_paths = [
+    'users/',
+    'api/', // post service
+  ];
+
+  for (const x of active_paths) {
+    if (path.includes(x)) {
+      return import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080';
+    }
+  }
+
+  // 🔥 FIX: default to real API, not mock
+  return import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080';
 }
 
-function getBaseURL() {
-  if (shouldUseMock()) return 'https://mockapi.local';
-  const configured = (import.meta.env.VITE_API_BASE || '').trim();
-  return configured || 'http://localhost:8080';
-}
 
 function buildAuthHeader(token) {
   if (!token) return null;

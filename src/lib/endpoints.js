@@ -1,22 +1,60 @@
 // Centralized endpoint map (easy to adjust when backend endpoints finalize)
 export const endpoints = {
   // Post service
-  listPublishedPosts: (status = 'Published') =>
-    `/posts?status=${encodeURIComponent(status)}`,
-  listAllPosts: () => '/posts',
-  postDetail: (postId) => `/posts/${postId}`,
-  updatePost: (postId) => `/posts/${postId}`,
-  createPost: () => '/posts',
-  createReply: (postId) => `/posts/${postId}/replies`,
-  deleteReply: (replyId) => `/replies/${replyId}`,
+listPublishedPosts: (status = "Published") =>
+  `/api/posts?status=${encodeURIComponent(status)}`,
+
+listAllPosts: () => "/api/posts",
+
+getPost: (postId) => `/api/posts/${postId}`,
+postDetail: (postId) => `/api/posts/${postId}`, // same as getPost (keep one if you want)
+
+getMyPostById: (id) => `/api/posts/me/${id}`,
+
+updatePost: (postId) => `/api/posts/${postId}`,
+createPost: () => "/api/posts",
+getMyPosts: () => `/api/posts/me`,
+
+
+createReply: (postId) => `/api/posts/${postId}/replies`,
+getReplies: (postId) => `/api/posts/${postId}/replies`,
+
+deleteReply: (replyId) => `/api/replies/${replyId}`,
+deletePost: (postId) => `/api/posts/${postId}`,
+
+publishPost: (id) => `/api/posts/${id}/publish`,
+createAndPublishPost: () => "/api/posts/publish",
+updateReply: (replyId) => `/api/replies/${replyId}`,
+
+banPost: (postId) => `/api/admin/posts/${postId}/ban`,
+unbanPost: (postId) => `/api/admin/posts/${postId}/unban`,
+
+adminBannedPosts: () => "/api/admin/posts/banned",
+adminDeletedPosts: () => "/api/admin/posts/deleted",
+
+adminPostDetail: (postId) => `/api/admin/posts/${postId}`,
+
+recoverPost: (postId) => `/api/admin/posts/${postId}/recover`,
+
+archivePost: (postId) => `/api/posts/${postId}/archive`,
+unarchivePost: (postId) => `/api/posts/${postId}/unarchive`,
+hidePost: (postId) => `/api/posts/${postId}/hide`,
+unhidePost: (postId) => `/api/posts/${postId}/unhide`,
+
+
+
+
+
+
+
 
   // User/Auth service
   userProfile: (userId) => `/users/${userId}/profile`,
   updateUserProfile: (userId) => `/users/${userId}/profile`,
 
   // Optional Post endpoints for Profile page (adjust if AR uses different paths)
-  top3MyPosts: () => '/posts/me/top3',
-  myDraftPosts: () => '/posts/me/drafts',
+  top3MyPosts: () => '/api/me/posts/top',
+  myDraftPosts: () => '/api/me/posts/drafts',
 
    // Admin endpoints
   adminListUsers: () => '/users',
