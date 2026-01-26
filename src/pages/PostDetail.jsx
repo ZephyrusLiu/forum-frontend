@@ -19,6 +19,8 @@ const styles = `
   .attachment-item { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 12px; border:1px solid #eee; border-radius:12px; margin-bottom:10px; background:#fafafa; }
   .attachment-name { font-size: .95rem; color:#111; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .attachment-meta { font-size: .85rem; color:#6b6b6b; }
+  .attachment-preview { margin-top: 10px; }
+  .attachment-img { max-width: 100%; border-radius: 12px; display:block; border:1px solid #eee; }
 
   .reply { margin-bottom: 12px; }
   .reply-card { padding: 12px; border: 1px solid #f0f0f0; border-radius: 14px; background: #fff; }
@@ -135,6 +137,20 @@ function getUserAvatarUrl(x) {
 }
 
 // ---------- Attachments helpers ----------
+function looksLikeImage(name = "", contentType = "") {
+  const ct = String(contentType || "").toLowerCase();
+  if (ct.startsWith("image/")) return true;
+  const n = String(name || "").toLowerCase();
+  return n.endsWith(".png") || n.endsWith(".jpg") || n.endsWith(".jpeg") || n.endsWith(".gif") || n.endsWith(".webp");
+}
+
+function nameFromKey(key) {
+  const s = String(key || "");
+  const parts = s.split("/");
+  return parts[parts.length - 1] || "attachment";
+}
+
+// Supports: attachments: ["posts/...key"] OR [{key,url,...}]
 function normalizeAttachments(post) {
   const a =
     post?.attachments ||
@@ -145,17 +161,30 @@ function normalizeAttachments(post) {
     [];
 
   if (!Array.isArray(a)) return [];
+
   return a
     .map((it) => {
-      // Support common shapes
+      // ✅ if backend stores string keys
+      if (typeof it === "string") {
+        const key = it;
+        return {
+          id: key,
+          key,
+          name: nameFromKey(key),
+          url: "", // will be filled after presign
+          contentType: "",
+          size: null,
+        };
+      }
+
+      // object shape
+      const key = it?.key || it?.path || it?.s3Key || "";
       const name =
         it?.name ||
         it?.filename ||
         it?.originalName ||
         it?.originalname ||
-        it?.key ||
-        it?.path ||
-        "attachment";
+        (key ? nameFromKey(key) : "attachment");
 
       const url =
         it?.url ||
@@ -170,7 +199,8 @@ function normalizeAttachments(post) {
       const size = it?.size || it?.bytes || null;
 
       return {
-        id: it?._id || it?.id || it?.key || `${name}-${url}`,
+        id: it?._id || it?.id || key || `${name}-${url}`,
+        key,
         name,
         url,
         contentType,
@@ -192,7 +222,7 @@ function formatBytes(bytes) {
   return `${gb.toFixed(1)} GB`;
 }
 
-// ---------- Nested replies (BONUS): build tree from parentReplyId ----------
+// ---------- Nested replies ----------
 function getReplyId(r) {
   return r?._id || r?.id;
 }
@@ -225,7 +255,6 @@ function buildReplyTree(flat) {
     }
   }
 
-  // newest first at each level (optional)
   const sortByCreatedDesc = (a, b) => {
     const ta = Date.parse(a?.createdAt || 0) || 0;
     const tb = Date.parse(b?.createdAt || 0) || 0;
@@ -251,7 +280,7 @@ export default function PostDetail() {
   const [status, setStatus] = useState("idle");
   const [errorMsg, setErrorMsg] = useState("");
   const [post, setPost] = useState(null);
-  const [replies, setReplies] = useState([]); // can be flat or already nested; we handle both
+  const [replies, setReplies] = useState([]);
   const [replyText, setReplyText] = useState("");
 
   const [uiError, setUiError] = useState("");
@@ -262,23 +291,20 @@ export default function PostDetail() {
   const [hideBusy, setHideBusy] = useState(false);
   const [archiveBusy, setArchiveBusy] = useState(false);
 
-  // NEW: replying to a specific reply (nested replies)
   const [replyParentId, setReplyParentId] = useState(null);
   const [replyParentPreview, setReplyParentPreview] = useState(null);
 
-  // ---------- AUTH / OWNER HELPERS ----------
+  // ✅ NEW: attachment links (key -> signed url)
+  const [attachmentLinks, setAttachmentLinks] = useState({}); // { [key]: url }
+
   const myId = user?.id ?? user?.userId ?? user?._id ?? user?.user?._id;
   const isAdmin = user?.type === "admin" || user?.type === "super";
 
-  const getPostOwnerId = (p) =>
-    p?.userId ?? p?.user?._id ?? p?.authorId ?? p?.ownerId;
-
+  const getPostOwnerId = (p) => p?.userId ?? p?.user?._id ?? p?.authorId ?? p?.ownerId;
   const postOwnerId = getPostOwnerId(post);
-  const isPostOwner =
-    Boolean(token && myId && postOwnerId && String(postOwnerId) === String(myId));
+  const isPostOwner = Boolean(token && myId && postOwnerId && String(postOwnerId) === String(myId));
 
-  const getReplyOwnerId = (r) =>
-    r?.userId ?? r?.user?._id ?? r?.authorId ?? r?.ownerId;
+  const getReplyOwnerId = (r) => r?.userId ?? r?.user?._id ?? r?.authorId ?? r?.ownerId;
 
   const canEditReply = (r) => {
     if (!token) return false;
@@ -294,7 +320,6 @@ export default function PostDetail() {
     return isReplyOwner || isAdmin || isPostOwner;
   };
 
-  // ---------- STAGE FLAGS ----------
   const stage = String(post?.stage ?? post?.status ?? "").toUpperCase();
   const isBannedPost = stage === "BANNED" || post?.isBanned === true;
   const isDeletedPost = stage === "DELETED" || post?.isDeleted === true;
@@ -302,17 +327,10 @@ export default function PostDetail() {
   const isArchivedPost = post?.isArchived === true || post?.isArchived === "true";
   const isPublishedPost = stage === "PUBLISHED";
 
-  // Replies allowed only when: published + not hidden + not archived + not banned/deleted
   const canReply = Boolean(
-    token &&
-      isPublishedPost &&
-      !isHiddenPost &&
-      !isArchivedPost &&
-      !isBannedPost &&
-      !isDeletedPost
+    token && isPublishedPost && !isHiddenPost && !isArchivedPost && !isBannedPost && !isDeletedPost
   );
 
-  // ---------- ADMIN: BAN / UNBAN ----------
   const handleBanPost = async () => {
     if (!postId) return;
     if (!confirm("Ban this post?")) return;
@@ -343,7 +361,6 @@ export default function PostDetail() {
     }
   };
 
-  // ---------- ADMIN: RECOVER ----------
   const handleRecoverPost = async () => {
     if (!postId) return;
     if (!isAdmin) return;
@@ -361,7 +378,6 @@ export default function PostDetail() {
     }
   };
 
-  // ---------- OWNER: DELETE ----------
   const handleDeletePost = async () => {
     if (!postId) return;
     if (!isPostOwner) return;
@@ -379,14 +395,12 @@ export default function PostDetail() {
     }
   };
 
-  // ---------- OWNER: EDIT ----------
   const handleEditPost = () => {
     if (!postId) return;
     if (!isPostOwner) return;
     navigate(`/posts/create?draftId=${encodeURIComponent(postId)}`);
   };
 
-  // ---------- OWNER: HIDE / UNHIDE ----------
   const handleHidePost = async () => {
     if (!postId) return;
     if (!isPostOwner) return;
@@ -421,7 +435,6 @@ export default function PostDetail() {
     }
   };
 
-  // ---------- OWNER: ARCHIVE / UNARCHIVE ----------
   const handleArchivePost = async () => {
     if (!postId) return;
     if (!isPostOwner) return;
@@ -492,17 +505,14 @@ export default function PostDetail() {
       try {
         let p = null;
 
-        // 1) try public
         try {
           p = await loadPublic();
         } catch (e) {
-          // 2) owner fallback
           if (token && isNotFoundError(e) && endpoints.getMyPostById) {
             try {
               p = await loadMine();
             } catch (_) {}
           }
-          // 3) admin fallback
           if (!p && isAdmin && endpoints.adminPostDetail) {
             p = await loadAdmin();
           }
@@ -532,25 +542,73 @@ export default function PostDetail() {
 
   // ---------- Derived: attachments + reply tree ----------
   const attachments = useMemo(() => normalizeAttachments(post), [post]);
+
+  // ✅ NEW: presign keys that don’t have a url yet
+  useEffect(() => {
+    let alive = true;
+
+    async function presignKey(key) {
+      const url = `http://localhost:5005/files/url?key=${encodeURIComponent(key)}`;
+      const res = await fetch(url, {
+        method: "GET",
+        headers: {
+          Authorization: token ? `Bearer ${token}` : "",
+        },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.message || "Failed to get file url");
+      return data?.url || data?.result?.url || "";
+    }
+
+    async function run() {
+      if (!token) return; // file-service requires auth
+      const keys = attachments.map((a) => a.key).filter(Boolean);
+
+      // only those missing in cache
+      const missing = keys.filter((k) => !attachmentLinks[String(k)]);
+      if (missing.length === 0) return;
+
+      const nextMap = {};
+      for (const k of missing) {
+        try {
+          const signed = await presignKey(k);
+          if (signed) nextMap[String(k)] = signed;
+        } catch {
+          // ignore per-file errors, keep going
+        }
+      }
+
+      if (!alive) return;
+      if (Object.keys(nextMap).length) {
+        setAttachmentLinks((prev) => ({ ...prev, ...nextMap }));
+      }
+    }
+
+    run();
+    return () => {
+      alive = false;
+    };
+  }, [attachments, token, attachmentLinks]);
+
   const replyTree = useMemo(() => {
-    // If API already returns nested, keep it; else build from flat
-    const looksNested = replies?.some?.((r) => Array.isArray(r?.__children) || Array.isArray(r?.children) || Array.isArray(r?.replies));
+    const looksNested = replies?.some?.(
+      (r) => Array.isArray(r?.__children) || Array.isArray(r?.children) || Array.isArray(r?.replies)
+    );
     if (looksNested) {
-      // normalize nested children keys into __children for rendering
       const mapNested = (arr) =>
         (Array.isArray(arr) ? arr : []).map((n) => ({
           ...n,
           __children: mapNested(n?.__children || n?.children || n?.replies || []),
         }));
       const top = mapNested(replies);
-      // newest first on top-level only
-      top.sort((a, b) => (Date.parse(b?.createdAt || 0) || 0) - (Date.parse(a?.createdAt || 0) || 0));
+      top.sort(
+        (a, b) => (Date.parse(b?.createdAt || 0) || 0) - (Date.parse(a?.createdAt || 0) || 0)
+      );
       return top;
     }
     return buildReplyTree(replies);
   }, [replies]);
 
-  // ---------- Create Reply / Sub-reply ----------
   const handleCreateReply = async () => {
     if (!replyText.trim()) return;
 
@@ -563,7 +621,6 @@ export default function PostDetail() {
 
     try {
       const body = { comment: replyText.trim() };
-      // BONUS nested reply
       if (replyParentId) body.parentReplyId = replyParentId;
 
       const raw = await apiRequest("POST", endpoints.createReply(postId), token, body);
@@ -571,7 +628,6 @@ export default function PostDetail() {
       const payload = unwrapResult(raw);
       const created = payload?.reply ?? payload?.data?.reply ?? payload?.data ?? payload;
 
-      // Keep a flat list locally (tree is computed)
       setReplies((prev) => [created, ...(Array.isArray(prev) ? prev : [])]);
       setReplyText("");
       setReplyParentId(null);
@@ -596,7 +652,6 @@ export default function PostDetail() {
     setReplyParentPreview(null);
   };
 
-  // ---------- DELETE REPLY ----------
   const handleDeleteReply = async (replyId) => {
     if (!replyId) return;
     if (!confirm("Delete this reply?")) return;
@@ -604,15 +659,15 @@ export default function PostDetail() {
     setUiError("");
     try {
       await apiRequest("DELETE", endpoints.deleteReply(replyId), token);
-      setReplies((prev) => (Array.isArray(prev) ? prev.filter((x) => String(getReplyId(x)) !== String(replyId)) : []));
-      // if you were replying to this reply, cancel
+      setReplies((prev) =>
+        Array.isArray(prev) ? prev.filter((x) => String(getReplyId(x)) !== String(replyId)) : []
+      );
       if (replyParentId && String(replyParentId) === String(replyId)) cancelReplyTo();
     } catch (e) {
       setUiError(getErrorMessage(e, "Delete failed"));
     }
   };
 
-  // ---------- EDIT REPLY ----------
   const handleEditReply = async (r) => {
     const replyId = getReplyId(r);
     const current = r.comment || r.content || r.body || "";
@@ -629,14 +684,15 @@ export default function PostDetail() {
       const updated = payload?.reply ?? payload?.data?.reply ?? payload?.data ?? payload;
 
       setReplies((prev) =>
-        (Array.isArray(prev) ? prev : []).map((x) => (String(getReplyId(x)) === String(replyId) ? updated : x))
+        (Array.isArray(prev) ? prev : []).map((x) =>
+          String(getReplyId(x)) === String(replyId) ? updated : x
+        )
       );
     } catch (e) {
       setUiError(getErrorMessage(e, "Update failed"));
     }
   };
 
-  // ---------- RENDER HELPERS ----------
   const ReplyNode = ({ node, depth = 0 }) => {
     const id = getReplyId(node);
     const name = getUserName(node);
@@ -645,11 +701,7 @@ export default function PostDetail() {
     const updatedAt = getUpdatedAt(node);
 
     const body =
-      node?.isActive === false ? (
-        <i>Deleted</i>
-      ) : (
-        node?.comment || node?.content || node?.body || ""
-      );
+      node?.isActive === false ? <i>Deleted</i> : node?.comment || node?.content || node?.body || "";
 
     const children = node?.__children || [];
 
@@ -676,14 +728,12 @@ export default function PostDetail() {
                 </span>
 
                 <span className="reply-actions">
-                  {/* Reply (nested) */}
                   {canReply && node?.isActive !== false ? (
                     <button className="btn-ghost" onClick={() => startReplyTo(node)}>
                       Reply
                     </button>
                   ) : null}
 
-                  {/* Edit/Delete */}
                   {node?.isActive !== false && (canEditReply(node) || canDeleteReply(node)) ? (
                     <>
                       {canEditReply(node) ? (
@@ -717,7 +767,6 @@ export default function PostDetail() {
     );
   };
 
-  // ---------- RENDER ----------
   if (status === "loading") {
     return (
       <PageShell>
@@ -743,6 +792,13 @@ export default function PostDetail() {
 
   const postAuthorName = getUserName(post);
   const postAuthorAvatar = getUserAvatarUrl(post);
+
+  // ✅ Renderable attachments: if url missing but key exists, use attachmentLinks[key]
+  const renderableAttachments = attachments.map((a) => {
+    const k = a.key ? String(a.key) : "";
+    const signed = k ? attachmentLinks[k] : "";
+    return { ...a, url: a.url || signed || "" };
+  });
 
   return (
     <PageShell>
@@ -771,7 +827,6 @@ export default function PostDetail() {
 
               {uiError ? <div className="error">{uiError}</div> : null}
 
-              {/* OWNER ONLY actions */}
               {isPostOwner && !isDeletedPost && !isBannedPost && (
                 <div className="btn-row" style={{ marginTop: 10 }}>
                   <button className="btn-ghost" onClick={handleEditPost}>
@@ -814,7 +869,6 @@ export default function PostDetail() {
                 </div>
               )}
 
-              {/* ADMIN ONLY: RECOVER */}
               {isAdmin && isDeletedPost && (
                 <div className="btn-row" style={{ marginTop: 10 }}>
                   <button className="btn-success" onClick={handleRecoverPost} disabled={recoverBusy}>
@@ -823,7 +877,6 @@ export default function PostDetail() {
                 </div>
               )}
 
-              {/* ADMIN: BAN / UNBAN */}
               {isAdmin && !isDeletedPost && (
                 <div className="btn-row" style={{ marginTop: 10 }}>
                   {!isBannedPost ? (
@@ -838,7 +891,6 @@ export default function PostDetail() {
                 </div>
               )}
 
-              {/* MUST HAVE: User name + profile image, Post date, Update date if edited */}
               <div className="meta" style={{ marginTop: "1rem" }}>
                 {postAuthorAvatar ? (
                   <img className="avatar" src={postAuthorAvatar} alt={postAuthorName} />
@@ -860,42 +912,56 @@ export default function PostDetail() {
               </div>
             </header>
 
-            {/* MUST HAVE: Post Description */}
-            <article className="content">{post?.content || post?.body || post?.description || ""}</article>
+            <article className="content">
+              {post?.content || post?.body || post?.description || ""}
+            </article>
 
-            {/* MUST HAVE: Attachments (if any) */}
-            {attachments.length > 0 ? (
+            {/* ✅ Attachments + preview */}
+            {renderableAttachments.length > 0 ? (
               <section className="attachments">
-                <h4>Attachments ({attachments.length})</h4>
-                {attachments.map((a) => (
-                  <div key={a.id} className="attachment-item">
-                    <div style={{ minWidth: 0 }}>
-                      <div className="attachment-name" title={a.name}>
-                        {a.name}
-                      </div>
-                      <div className="attachment-meta">
-                        {a.contentType ? a.contentType : "file"}
-                        {a.size ? ` • ${formatBytes(a.size)}` : ""}
-                      </div>
-                    </div>
+                <h4>Attachments ({renderableAttachments.length})</h4>
 
-                    {a.url ? (
-                      <a className="btn-ghost" href={a.url} target="_blank" rel="noreferrer">
-                        Open
-                      </a>
-                    ) : (
-                      <span className="muted" style={{ fontSize: ".9rem" }}>
-                        No link
-                      </span>
-                    )}
-                  </div>
-                ))}
+                {renderableAttachments.map((a) => {
+                  const url = a.url || "";
+                  const isImg = looksLikeImage(a.name, a.contentType);
+
+                  return (
+                    <div key={a.id} className="attachment-item" style={{ flexDirection: "column", alignItems: "stretch" }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div className="attachment-name" title={a.name}>
+                            {a.name}
+                          </div>
+                          <div className="attachment-meta">
+                            {a.contentType ? a.contentType : a.key ? "s3-key" : "file"}
+                            {a.size ? ` • ${formatBytes(a.size)}` : ""}
+                          </div>
+                        </div>
+
+                        {url ? (
+                          <a className="btn-ghost" href={url} target="_blank" rel="noreferrer">
+                            Open
+                          </a>
+                        ) : (
+                          <span className="muted" style={{ fontSize: ".9rem" }}>
+                            Loading link...
+                          </span>
+                        )}
+                      </div>
+
+                      {url && isImg ? (
+                        <div className="attachment-preview">
+                          <img className="attachment-img" src={url} alt={a.name} />
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
               </section>
             ) : null}
 
             <hr className="divider" />
 
-            {/* REPLIES SECTION */}
             <section>
               <h3 style={{ marginBottom: "1rem" }}>
                 Replies ({Array.isArray(replies) ? replies.length : 0})
@@ -907,14 +973,17 @@ export default function PostDetail() {
                 </div>
               ) : null}
 
-              {/* Reply input */}
               <div style={{ marginBottom: "1.4rem" }}>
                 {replyParentId && replyParentPreview ? (
                   <div className="replying-to">
                     <div style={{ minWidth: 0 }}>
                       Replying to <b>{replyParentPreview.name}</b>
                       {replyParentPreview.text ? (
-                        <span className="muted"> — “{replyParentPreview.text}{replyParentPreview.text.length >= 120 ? "…" : ""}”</span>
+                        <span className="muted">
+                          {" "}
+                          — “{replyParentPreview.text}
+                          {replyParentPreview.text.length >= 120 ? "…" : ""}”
+                        </span>
                       ) : null}
                     </div>
                     <button className="btn-ghost" onClick={cancelReplyTo}>
@@ -954,7 +1023,6 @@ export default function PostDetail() {
                 </div>
               </div>
 
-              {/* Replies list (with nested sub-replies) */}
               {replyTree.length === 0 ? (
                 <div className="muted">No replies yet.</div>
               ) : (

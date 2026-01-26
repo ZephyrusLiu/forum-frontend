@@ -16,21 +16,26 @@ export default function CreatePost() {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
 
-  // ✅ keep original structure: still an array, but we store only ONE uploaded image URL
-  const [attachmentUrls, setAttachmentUrls] = useState(['']);
+  // ✅ store S3 KEY in DB, but show SIGNED URL in preview
+  const [attachmentKeys, setAttachmentKeys] = useState(['']); // DB value (key)
+  const [previewUrl, setPreviewUrl] = useState(''); // UI only (signed url)
 
   const [status, setStatus] = useState('idle');
   const [error, setError] = useState('');
 
-  // ✅ upload state
+  // upload state
   const [imageFile, setImageFile] = useState(null);
   const [uploading, setUploading] = useState(false);
 
-  // IMPORTANT: publishing requires email verified (requireEmailVerified)
+  // publishing requires email verified (requireEmailVerified)
   const canPublish =
     user?.status === 'active' || user?.type === 'admin' || user?.type === 'super';
 
-  const removeImage = () => setAttachmentUrls(['']); // clear
+  const removeImage = () => {
+    setAttachmentKeys(['']);
+    setPreviewUrl('');
+    setImageFile(null);
+  };
 
   // Prefill when editing a draft
   useEffect(() => {
@@ -51,11 +56,31 @@ export default function CreatePost() {
         setTitle(d?.title ?? '');
         setContent(d?.content ?? '');
 
-        const urls =
+        const arr =
           d?.attachments ?? d?.images ?? d?.imageUrls ?? d?.attachmentUrls ?? [];
 
-        const first = Array.isArray(urls) && urls.length ? String(urls[0] ?? '') : '';
-        setAttachmentUrls([first || '']);
+        const firstKey =
+          Array.isArray(arr) && arr.length ? String(arr[0] ?? '') : '';
+
+        // ✅ treat attachments[0] as KEY in DB
+        setAttachmentKeys([firstKey || '']);
+
+        // ✅ if we already have a key, fetch a fresh signed URL for preview
+        if (firstKey) {
+          try {
+            const urlRaw = await fetch(
+              `http://localhost:5005/files/url?key=${encodeURIComponent(firstKey)}`,
+              { headers: { Authorization: `Bearer ${token}` } }
+            );
+            const urlData = await urlRaw.json().catch(() => ({}));
+            if (urlRaw.ok && urlData?.url) setPreviewUrl(urlData.url);
+            else setPreviewUrl('');
+          } catch {
+            setPreviewUrl('');
+          }
+        } else {
+          setPreviewUrl('');
+        }
 
         setStatus('idle');
       } catch (e) {
@@ -72,8 +97,8 @@ export default function CreatePost() {
   }, [draftId, token]);
 
   function buildDraftPayload() {
-    const url = (attachmentUrls?.[0] ?? '').trim();
-    const urls = url ? [url] : [];
+    const key = (attachmentKeys?.[0] ?? '').trim();
+    const keys = key ? [key] : [];
 
     const t = title.trim();
     const c = content.trim();
@@ -86,13 +111,20 @@ export default function CreatePost() {
       content: c,
       stage: 'UNPUBLISHED',
       isArchived: false,
-      attachments: urls,
+      attachments: keys, // ✅ store KEY in DB
     };
   }
 
+  // ✅ Upload via FILE SERVICE (server uploads to S3) -> returns { key, url }
+  // We store key in DB, and use url (signed) only for preview
   async function uploadImageToS3() {
     if (!imageFile) {
       setError('Choose an image file first.');
+      return;
+    }
+
+    if (!draftId) {
+      setError('Save draft first (need draftId before uploading image).');
       return;
     }
 
@@ -100,37 +132,34 @@ export default function CreatePost() {
     setUploading(true);
 
     try {
-      const raw = await apiRequest(
-        'POST',
-        endpoints.requestImageUpload(),
-        token,
-        {
-          filename: imageFile.name,
-          contentType: imageFile.type || 'application/octet-stream',
-        }
-      );
+      const fd = new FormData();
+      fd.append('file', imageFile); // multer expects "file"
+      fd.append('scope', 'posts');
+      fd.append('postId', String(draftId));
 
-      const data = unwrapResult(raw);
-      const uploadUrl = data?.uploadUrl;
-      const fileUrl = data?.fileUrl;
-
-      if (!uploadUrl || !fileUrl) {
-        throw new Error('File service did not return uploadUrl/fileUrl');
-      }
-
-      const putRes = await fetch(uploadUrl, {
-        method: 'PUT',
+      const res = await fetch('http://localhost:5005/files/upload', {
+        method: 'POST',
         headers: {
-          'Content-Type': imageFile.type || 'application/octet-stream',
+          Authorization: `Bearer ${token}`,
         },
-        body: imageFile,
+        body: fd,
       });
 
-      if (!putRes.ok) {
-        throw new Error(`S3 upload failed (${putRes.status})`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.error?.message || data?.message || 'Upload failed');
       }
 
-      setAttachmentUrls([fileUrl]);
+      // After your controller change, it should return:
+      // { key, url: signedUrl, expiresIn, publicUrl }
+      const key = data?.key || data?.result?.key;
+      const signedUrl = data?.url || data?.result?.url;
+
+      if (!key) throw new Error('Upload ok but no key returned');
+      if (!signedUrl) throw new Error('Upload ok but no signed url returned');
+
+      setAttachmentKeys([String(key)]);
+      setPreviewUrl(String(signedUrl));
       setImageFile(null);
     } catch (e) {
       setError(e?.message || 'Failed to upload image');
@@ -192,7 +221,7 @@ export default function CreatePost() {
   }
 
   const isLoading = status === 'loading';
-  const imageUrl = (attachmentUrls?.[0] ?? '').trim();
+  const hasImage = Boolean((attachmentKeys?.[0] ?? '').trim());
 
   return (
     <PageShell
@@ -221,7 +250,6 @@ export default function CreatePost() {
           />
         </label>
 
-        {/* ✅ upload only (no URL input) */}
         <div className="label">Image (optional) — upload one</div>
 
         <div className="stack" style={{ marginTop: 12 }}>
@@ -238,25 +266,26 @@ export default function CreatePost() {
               type="button"
               onClick={uploadImageToS3}
               disabled={isLoading || uploading || !imageFile}
+              title={!draftId ? 'Save draft first to get an id' : undefined}
             >
-              {uploading ? 'Uploading…' : 'Upload to S3'}
+              {uploading ? 'Uploading…' : 'Upload'}
             </button>
 
             <button
               className="btn btn--ghost"
               type="button"
               onClick={removeImage}
-              disabled={isLoading || uploading || !imageUrl}
+              disabled={isLoading || uploading || !hasImage}
             >
               Remove
             </button>
           </div>
 
-          {imageUrl ? (
+          {previewUrl ? (
             <div className="stack">
               <div className="label">Preview</div>
               <img
-                src={imageUrl}
+                src={previewUrl}
                 alt="attachment"
                 style={{ maxWidth: '100%', borderRadius: 10 }}
               />
