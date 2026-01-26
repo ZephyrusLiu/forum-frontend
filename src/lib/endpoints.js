@@ -23,7 +23,10 @@ export const endpoints = {
   adminUpdateUserStatus: (userId) => `/users/${userId}/status`,
   adminUpdateUserRole: (userId) => `/users/${userId}/role`,
   adminListMessages: () => '/messages',
-  adminUpdateMessageStatus: (messageId) => `/messages/${messageId}/status`,
+  adminUpdateMessageStatus: (messageId) => `/messages/${messageId}`,
+
+  // Message service
+  createContactMessage: () => '/contactus',
 
   // History service
   createHistory: () => '/history',

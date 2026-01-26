@@ -1,14 +1,21 @@
 import { useEffect, useState } from 'react';
+import { Navigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import PageShell from '../components/PageShell.jsx';
 import { apiRequest } from '../lib/apiClient.js';
 import { endpoints, formatDate, unwrapResult } from '../lib/endpoints.js';
 
 export default function AdminMessages() {
-  const { token } = useSelector((s) => s.auth);
+  const { token, user } = useSelector((s) => s.auth);
   const [status, setStatus] = useState('idle');
   const [error, setError] = useState('');
   const [messages, setMessages] = useState([]);
+
+  const isAdmin = user?.type === 'admin' || user?.type === 'super';
+
+  if (!token || !isAdmin) {
+    return <Navigate to="/home" replace />;
+  }
 
   useEffect(() => {
     let ignore = false;
@@ -38,7 +45,7 @@ export default function AdminMessages() {
 
   const updateStatus = async (messageId, nextStatus) => {
     try {
-      await apiRequest('PATCH', endpoints.adminUpdateMessageStatus(messageId), token, { status: nextStatus });
+      await apiRequest('PUT', endpoints.adminUpdateMessageStatus(messageId), token, { status: nextStatus });
       setMessages((prev) =>
         prev.map((m) => (String(m.id || m.messageId) === String(messageId) ? { ...m, status: nextStatus } : m)),
       );
@@ -76,12 +83,12 @@ export default function AdminMessages() {
                     <td>{id}</td>
                     <td>{m.from || m.email || '—'}</td>
                     <td>{m.subject || m.title || '—'}</td>
-                    <td>{m.status || 'open'}</td>
+                    <td>{m.status || 'Open'}</td>
                     <td>{formatDate(m.createdAt || m.dateCreated)}</td>
                     <td>
                       <button
                         className="btn btn--ghost"
-                        onClick={() => updateStatus(id, isClosed ? 'open' : 'closed')}
+                        onClick={() => updateStatus(id, isClosed ? 'Open' : 'Closed')}
                       >
                         {isClosed ? 'Reopen' : 'Close'}
                       </button>
