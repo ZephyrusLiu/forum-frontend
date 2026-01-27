@@ -25,6 +25,9 @@ export default function Profile() {
   const [editLastName, setEditLastName] = useState('');
   const [editEmail, setEditEmail] = useState('');
 
+  const [editPassword, setEditPassword] = useState('');
+  const [editPasswordConfirm, setEditPasswordConfirm] = useState('');
+
   const [profileS3Key, setProfileS3Key] = useState(null);
   const [previewUrl, setPreviewUrl] = useState('');
 
@@ -169,6 +172,14 @@ export default function Profile() {
     setSaveStatus('loading');
     setSaveMessage('');
 
+    if (editPassword || editPasswordConfirm) {
+      if (editPassword !== editPasswordConfirm) {
+        setSaveStatus('failed');
+        setSaveMessage('Passwords do not match');
+        return;
+      }
+    }
+
     try {
       const payload = {};
 
@@ -188,6 +199,16 @@ export default function Profile() {
         payload.profileS3Key = profileS3Key;
       }
 
+      if (editPassword.trim()) {
+        payload.password = editPassword;
+      }
+
+      if (Object.keys(payload).length === 0) {
+        setSaveStatus('idle');
+        setSaveMessage('No changes to save.');
+        return;
+      }
+
       const raw = await apiRequest(
         'PATCH',
         endpoints.updateUserProfile(profileUserId),
@@ -197,6 +218,9 @@ export default function Profile() {
 
       const data = unwrapResult(raw);
       setProfile((prev) => ({ ...(prev || {}), ...data }));
+
+      setEditPassword('');
+      setEditPasswordConfirm('');
 
       setSaveStatus('succeeded');
       setSaveMessage(
