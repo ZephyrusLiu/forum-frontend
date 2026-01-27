@@ -38,7 +38,6 @@ export default function Profile() {
 
   const profileUserId = id || user?.userId;
 
-
   function getPostId(p) {
     const pid = p?._id ?? p?.id ?? p?.postId;
     return pid == null ? '' : String(pid);
@@ -53,7 +52,6 @@ export default function Profile() {
     const pid = getPostId(p);
     return pid ? `/posts/${pid}` : null;
   }
-
 
   useEffect(() => {
     let ignore = false;
@@ -109,7 +107,6 @@ export default function Profile() {
     };
   }, [profileUserId, token]);
 
-
   useEffect(() => {
     let ignore = false;
 
@@ -138,7 +135,6 @@ export default function Profile() {
       ignore = true;
     };
   }, [profileS3Key, token]);
-
 
   async function uploadAvatarToS3() {
     if (!imageFile) return;
@@ -173,7 +169,6 @@ export default function Profile() {
       setUploading(false);
     }
   }
-
 
   const onSave = async (e) => {
     e.preventDefault();
@@ -231,7 +226,6 @@ export default function Profile() {
     }
   };
 
-
   const onSearchHistory = async (e) => {
     e.preventDefault();
     setHistoryStatus('loading');
@@ -269,7 +263,6 @@ export default function Profile() {
 
   const fullName =
     `${profile?.firstName || ''} ${profile?.lastName || ''}`.trim() || 'Unnamed';
-
 
   return (
     <PageShell title={`/users/${profileUserId}/profile`} subtitle={null}>
@@ -328,9 +321,7 @@ export default function Profile() {
                 <input
                   type="file"
                   accept="image/*"
-                  onChange={(e) =>
-                    setImageFile(e.target.files?.[0] ?? null)
-                  }
+                  onChange={(e) => setImageFile(e.target.files?.[0] ?? null)}
                   disabled={uploading}
                 />
                 <button
@@ -407,9 +398,71 @@ export default function Profile() {
               </div>
             )}
           </div>
+
+          {/* top 3 posts (added at end) */}
+          <div className="card">
+            <div className="title">Top 3 My Posts</div>
+
+            {topPosts.length === 0 ? (
+              <div className="muted">No posts found.</div>
+            ) : (
+              <div className="list">
+                {topPosts.map((p) => {
+                  const to = getPostViewLink(p);
+                  const pid = getPostId(p);
+                  return (
+                    <div key={pid || Math.random()} className="listItem">
+                      <div className="listItem__top">
+                        {to ? (
+                          <Link className="link" to={to}>
+                            <b>{p?.title || `Post ${pid}`}</b>
+                          </Link>
+                        ) : (
+                          <b>{p?.title || `Post ${pid}`}</b>
+                        )}
+                      </div>
+                      <div className="muted">
+                        {formatDate(p?.createdAt || p?.updatedAt)}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* drafts (added at end) */}
+          <div className="card">
+            <div className="title">My Drafts</div>
+
+            {drafts.length === 0 ? (
+              <div className="muted">No drafts.</div>
+            ) : (
+              <div className="list">
+                {drafts.map((p) => {
+                  const pid = getPostId(p);
+                  const editTo = getDraftEditLink(p);
+                  return (
+                    <div key={pid || Math.random()} className="listItem">
+                      <div className="listItem__top">
+                        <b>{p?.title || `Draft ${pid}`}</b>
+                        {editTo && (
+                          <Link className="link" to={editTo}>
+                            Edit
+                          </Link>
+                        )}
+                      </div>
+                      <div className="muted">
+                        Last updated: {formatDate(p?.updatedAt || p?.createdAt)}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </PageShell>
   );
 }
-
