@@ -170,12 +170,23 @@ export default function Profile() {
     setSaveMessage('');
 
     try {
-      const payload = {
-        firstName: editFirstName.trim(),
-        lastName: editLastName.trim(),
-        email: editEmail.trim(),
-        profileS3Key,
-      };
+      const payload = {};
+
+      if (editFirstName.trim() !== (profile?.firstName || '')) {
+        payload.firstName = editFirstName.trim();
+      }
+
+      if (editLastName.trim() !== (profile?.lastName || '')) {
+        payload.lastName = editLastName.trim();
+      }
+
+      if (editEmail.trim() !== (profile?.email || '')) {
+        payload.email = editEmail.trim();
+      }
+
+      if (profileS3Key !== profile?.profileS3Key) {
+        payload.profileS3Key = profileS3Key;
+      }
 
       const raw = await apiRequest(
         'PATCH',
@@ -189,7 +200,7 @@ export default function Profile() {
 
       setSaveStatus('succeeded');
       setSaveMessage(
-        editEmail.trim() && editEmail.trim() !== (profile?.email || '')
+        payload.email
           ? 'Profile updated. Please verify your new email.'
           : 'Profile updated.'
       );
