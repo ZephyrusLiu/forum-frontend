@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 import PageShell from '../components/PageShell.jsx';
-import { verifyEmailThunk, verifyTokenThunk } from '../store/authSlice.js';
+import { verifyEmailThunk, verifyTokenThunk, resendVerificationThunk } from '../store/authSlice.js';
 
 function useQuery() {
   const { search } = useLocation();
@@ -16,7 +16,6 @@ export default function VerifyEmail() {
   const q = useQuery();
 
   const token = q.get('token'); // tokenized URL: /users/verify?token=xxxx
-  const [email, setEmail] = useState(q.get('email') || '');
   const [code, setCode] = useState('');
 
   const { verifyEmailStatus, verifyEmailError, user } = useSelector((s) => s.auth);
@@ -30,7 +29,7 @@ export default function VerifyEmail() {
 
   const onSubmit = async (e) => {
     e.preventDefault();
-    await dispatch(verifyEmailThunk({ email, code }));
+    await dispatch(verifyEmailThunk({ code }));
   };
 
   const done = verifyEmailStatus === 'succeeded';
@@ -48,11 +47,6 @@ export default function VerifyEmail() {
       {!token ? (
         <form className="form" onSubmit={onSubmit}>
           <label className="field">
-            <span>Email (if required by backend)</span>
-            <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
-          </label>
-
-          <label className="field">
             <span>6-digit Code</span>
             <input
               value={code}
@@ -62,16 +56,28 @@ export default function VerifyEmail() {
             />
           </label>
 
+          <button className="btn" disabled={verifyEmailStatus === 'loading'}>
+            {verifyEmailStatus === 'loading' ? 'Verifying…' : 'Verify'}
+          </button>
+
+          <div className="field">
+            <button
+              type="button"
+              className="btn secondary"
+              onClick={() => {
+                dispatch(resendVerificationThunk());
+              }}
+            >
+              Resend verification email
+            </button>
+          </div>
+
           {verifyEmailError ? <div className="error">Error: {verifyEmailError}</div> : null}
           {done ? (
             <div className="ok">
               Verified! {user?.userId ? 'Redirecting to /home…' : <>Please <Link to="/users/login">login</Link>.</>}
             </div>
           ) : null}
-
-          <button className="btn" disabled={verifyEmailStatus === 'loading'}>
-            {verifyEmailStatus === 'loading' ? 'Verifying…' : 'Verify'}
-          </button>
         </form>
       ) : (
         <div>
@@ -88,3 +94,4 @@ export default function VerifyEmail() {
     </PageShell>
   );
 }
+
