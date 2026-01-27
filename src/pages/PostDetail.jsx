@@ -563,6 +563,18 @@ export default function PostDetail() {
         if (!alive) return;
         setPost(p);
 
+        if (token) {
+          const historyPayload = {
+            postId: p?.postId ?? p?._id ?? p?.id ?? postId,
+            postStatus: p?.postStatus,
+            status: p?.status,
+            stage: p?.stage,
+            isPublished: p?.isPublished,
+            published: p?.published,
+          };
+          apiRequest("POST", endpoints.createHistory(), token, historyPayload).catch(() => {});
+        }
+
         const r = await loadRepliesSafe();
         if (!alive) return;
         setReplies(r);

@@ -54,7 +54,7 @@ unhidePost: (postId) => `/api/posts/${postId}/unhide`,
   userReverify: () => `/users/reverify`,
   userVerifyToken: (token) => `/users/verify?token=${encodeURIComponent(token)}`,
   userVerifyCode: (code) => `/users/verify?code=${encodeURIComponent(code)}`,
-   
+
 
 
   // User/Auth service
@@ -79,8 +79,13 @@ unhidePost: (postId) => `/api/posts/${postId}/unhide`,
 
   // History service
   createHistory: () => '/history',
-  listHistory: (keyword) =>
-    keyword ? `/history?keyword=${encodeURIComponent(keyword)}` : '/history',
+  listHistory: (keyword, date) => {
+    const params = new URLSearchParams();
+    if (keyword) params.set('keyword', keyword);
+    if (date) params.set('date', date);
+    const query = params.toString();
+    return query ? `/history?${query}` : '/history';
+  },
 };
 
 // Normalize backend responses (some services might wrap payloads as {result: ...})

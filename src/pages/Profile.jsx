@@ -20,6 +20,7 @@ export default function Profile() {
   const [drafts, setDrafts] = useState([]);
   const [history, setHistory] = useState([]);
   const [historyKeyword, setHistoryKeyword] = useState('');
+  const [historyDate, setHistoryDate] = useState('');
   const [historyStatus, setHistoryStatus] = useState('idle');
   const [historyError, setHistoryError] = useState('');
 
@@ -240,7 +241,7 @@ export default function Profile() {
     try {
       const raw = await apiRequest(
         'GET',
-        endpoints.listHistory(historyKeyword),
+        endpoints.listHistory(historyKeyword, historyDate),
         token
       );
       const list = unwrapResult(raw);
@@ -375,6 +376,12 @@ export default function Profile() {
                 onChange={(e) => setHistoryKeyword(e.target.value)}
                 placeholder="Search history keyword"
               />
+              <input
+                className="input"
+                type="date"
+                value={historyDate}
+                onChange={(e) => setHistoryDate(e.target.value)}
+              />
               <button className="btn" type="submit">
                 Search
               </button>
@@ -395,7 +402,7 @@ export default function Profile() {
                   >
                     <div className="listItem__top">
                       <Link className="link" to={`/posts/${item.postId}`}>
-                        <b>Post {item.postId}</b>
+                        <b>{item?.post?.title || `Post ${item.postId}`}</b>
                       </Link>
                       <span className="pill">Viewed</span>
                     </div>
@@ -412,4 +419,3 @@ export default function Profile() {
     </PageShell>
   );
 }
-
