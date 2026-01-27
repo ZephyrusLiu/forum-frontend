@@ -287,6 +287,33 @@ function buildReplyTree(flat) {
   return roots;
 }
 
+function collectDescendantIds(flat, rootId) {
+  const byParent = new Map();
+  for (const r of flat) {
+    const pid = getParentId(r);
+    const id = getReplyId(r);
+    if (!id) continue;
+    const key = pid ? String(pid) : "";
+    if (!byParent.has(key)) byParent.set(key, []);
+    byParent.get(key).push(String(id));
+  }
+
+  const kill = new Set([String(rootId)]);
+  const stack = [String(rootId)];
+
+  while (stack.length) {
+    const cur = stack.pop();
+    const kids = byParent.get(String(cur)) || [];
+    for (const k of kids) {
+      if (!kill.has(k)) {
+        kill.add(k);
+        stack.push(k);
+      }
+    }
+  }
+  return kill;
+}
+
 export default function PostDetail() {
   const { postId } = useParams();
   const navigate = useNavigate();
@@ -318,6 +345,9 @@ export default function PostDetail() {
   // ✅ NEW: profile cache + avatar url cache
   const [profilesById, setProfilesById] = useState({});
   const [avatarUrlById, setAvatarUrlById] = useState({});
+
+  // ✅ NEW: prevent double delete + UI negative count
+  const [deletingReplyIds, setDeletingReplyIds] = useState({});
 
   const myId = user?.id ?? user?.userId ?? user?._id ?? user?.user?._id;
   const isAdmin = user?.type === "admin" || user?.type === "super";
@@ -352,6 +382,11 @@ export default function PostDetail() {
   const canReply = Boolean(
     token && isPublishedPost && !isHiddenPost && !isArchivedPost && !isBannedPost && !isDeletedPost
   );
+
+  const activeReplyCount = useMemo(() => {
+    const arr = Array.isArray(replies) ? replies : [];
+    return arr.filter((r) => r?.isActive !== false).length;
+  }, [replies]);
 
   // ---------- gateway: user profile fetch ----------
   async function fetchUserProfile(userId) {
@@ -627,7 +662,7 @@ export default function PostDetail() {
     return () => {
       alive = false;
     };
-  }, [attachments, token, attachmentLinks]); // keep as-is (works)
+  }, [attachments, token, attachmentLinks]);
 
   // ✅ NEW: load profiles (gateway) + presign avatars (file-service)
   useEffect(() => {
@@ -649,9 +684,7 @@ export default function PostDetail() {
           const signed = await presignKey(key);
           if (!alive) return;
           if (signed) setAvatarUrlById((prev) => ({ ...prev, [id]: signed }));
-        } catch {
-          // ignore avatar errors
-        }
+        } catch {}
       }
     }
 
@@ -734,12 +767,37 @@ export default function PostDetail() {
     }
   };
 
-  const startReplyTo = (r) => {
+  const startReplyTo = async (r) => {
     const id = getReplyId(r);
     if (!id) return;
+
+    const rid = String(getReplyOwnerId(r) || "");
+    let name = getUserName(r);
+
+    const prof = rid ? profilesById[rid] : null;
+    if (prof) {
+      name = fullNameFromProfile(prof);
+    } else if (rid && token) {
+      try {
+        const profile = await fetchUserProfile(rid);
+        setProfilesById((prev) => ({ ...prev, [rid]: profile }));
+        name = fullNameFromProfile(profile);
+
+        const key = mediaKeyFromProfile(profile);
+        if (key && !avatarUrlById[rid]) {
+          try {
+            const signed = await presignKey(key);
+            if (signed) setAvatarUrlById((prev) => ({ ...prev, [rid]: signed }));
+          } catch {}
+        }
+      } catch {
+        // ignore
+      }
+    }
+
     setReplyParentId(id);
     setReplyParentPreview({
-      name: getUserName(r),
+      name,
       text: (r?.comment || r?.content || r?.body || "").slice(0, 120),
     });
   };
@@ -753,15 +811,26 @@ export default function PostDetail() {
     if (!replyId) return;
     if (!confirm("Delete this reply?")) return;
 
+    const rid = String(replyId);
+    if (deletingReplyIds[rid]) return;
+
     setUiError("");
+    setDeletingReplyIds((prev) => ({ ...prev, [rid]: true }));
+
     try {
       await apiRequest("DELETE", endpoints.deleteReply(replyId), token);
-      setReplies((prev) =>
-        Array.isArray(prev) ? prev.filter((x) => String(getReplyId(x)) !== String(replyId)) : []
-      );
+
+      setReplies((prev) => {
+        const arr = Array.isArray(prev) ? prev : [];
+        const kill = collectDescendantIds(arr, replyId);
+        return arr.filter((x) => !kill.has(String(getReplyId(x))));
+      });
+
       if (replyParentId && String(replyParentId) === String(replyId)) cancelReplyTo();
     } catch (e) {
       setUiError(getErrorMessage(e, "Delete failed"));
+    } finally {
+      setDeletingReplyIds((prev) => ({ ...prev, [rid]: false }));
     }
   };
 
@@ -844,8 +913,12 @@ export default function PostDetail() {
                         </button>
                       ) : null}
                       {canDeleteReply(node) ? (
-                        <button className="btn-ghost" onClick={() => handleDeleteReply(id)}>
-                          Delete
+                        <button
+                          className="btn-ghost"
+                          onClick={() => handleDeleteReply(id)}
+                          disabled={Boolean(deletingReplyIds[String(id)])}
+                        >
+                          {deletingReplyIds[String(id)] ? "Deleting..." : "Delete"}
                         </button>
                       ) : null}
                     </>
@@ -1068,9 +1141,7 @@ export default function PostDetail() {
             <hr className="divider" />
 
             <section>
-              <h3 style={{ marginBottom: "1rem" }}>
-                Replies ({Array.isArray(replies) ? replies.length : 0})
-              </h3>
+              <h3 style={{ marginBottom: "1rem" }}>Replies ({activeReplyCount})</h3>
 
               {!canReply ? (
                 <div className="muted" style={{ marginBottom: 12 }}>
