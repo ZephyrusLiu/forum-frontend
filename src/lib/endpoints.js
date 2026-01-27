@@ -66,9 +66,11 @@ unhidePost: (postId) => `/api/posts/${postId}/unhide`,
   myDraftPosts: () => '/api/me/posts/drafts',
 
    // Admin endpoints
-  adminListUsers: () => '/users',
-  adminUpdateUserStatus: (userId) => `/users/${userId}/status`,
-  adminUpdateUserRole: (userId) => `/users/${userId}/role`,
+  adminListUsers: () => '/users/list',
+  adminUpdateUserStatus: (userId) => `/users/${userId}/profile`,
+  adminUpdateUserRole: (userId) => `/users/${userId}/profile`,
+
+
   adminListMessages: () => '/messages',
   adminUpdateMessageStatus: (messageId) => `/messages/${messageId}`,
 

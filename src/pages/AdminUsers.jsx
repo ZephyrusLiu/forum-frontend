@@ -21,7 +21,7 @@ export default function AdminUsers() {
         const raw = await apiRequest('GET', endpoints.adminListUsers(), token);
         if (ignore) return;
         const data = unwrapResult(raw);
-        setUsers(Array.isArray(data) ? data : data?.items || []);
+        setUsers(Array.isArray(data) ? data : data?.users || data?.items || []);
         setStatus('succeeded');
       } catch (e) {
         if (ignore) return;
@@ -119,3 +119,4 @@ export default function AdminUsers() {
     </PageShell>
   );
 }
+
