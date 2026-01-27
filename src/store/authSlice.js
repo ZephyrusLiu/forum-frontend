@@ -1,6 +1,7 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit';
 import { apiRequest } from '../lib/apiClient.js';
 import { decodeJwt } from '../lib/jwt.js';
+import { endpoints } from '../lib/endpoints.js';
 
 function normalizeUserFromJwtPayload(payload) {
   if (!payload) return null;
@@ -42,7 +43,9 @@ function initFromStorage() {
 
 export const loginThunk = createAsyncThunk('auth/login', async (payload, thunkApi) => {
   try {
-    const response = await apiRequest('POST', '/users/login', null, payload);
+    const response = await apiRequest('POST', endpoints.userLogin(), 
+	    null, payload);
+
     const token = extractToken(response);
     if (!token) throw new Error('Login succeeded but token is missing');
     return { token };
@@ -53,7 +56,7 @@ export const loginThunk = createAsyncThunk('auth/login', async (payload, thunkAp
 
 export const registerThunk = createAsyncThunk('auth/register', async (payload, thunkApi) => {
   try {
-    const response = await apiRequest('POST', '/users/register', null, payload);
+    const response = await apiRequest('POST', endpoints.userRegister(), null, payload);
     const token = extractToken(response);
     return { token, response };
   } catch (err) {
@@ -67,8 +70,10 @@ export const verifyTokenThunk = createAsyncThunk('auth/verifyToken', async (payl
     const verify_token = payload?.token;
     if (!verify_token) throw new Error('No verification token');
 
-    const params = new URLSearchParams({token : verify_token});
-    const response = await apiRequest('GET', `/users/verify?${params.toString()}`, stateToken);
+    const response = await apiRequest('GET', 
+	    endpoints.userVerifyToken(verify_token), stateToken);
+
+
 
     const newToken = extractToken(response) || stateToken;
     return { token: newToken };
@@ -84,8 +89,7 @@ export const verifyEmailThunk = createAsyncThunk('auth/verifyEmail', async (payl
 
     if (!code) throw new Error('No verification code');
 
-    const params = new URLSearchParams({code});
-    const response = await apiRequest('GET', `/users/verify?${params.toString()}`, token);
+    const response = await apiRequest('GET', endpoints.userVerifyCode(code), token);
 
     const newToken = extractToken(response);
     return { response, token: newToken };
@@ -93,6 +97,26 @@ export const verifyEmailThunk = createAsyncThunk('auth/verifyEmail', async (payl
     return thunkApi.rejectWithValue(err.message);
   }
 });
+
+export const resendVerificationThunk = createAsyncThunk(
+  'auth/resendVerification',
+  async (_, thunkApi) => {
+    try {
+      const token = thunkApi.getState().auth.token;
+
+      const response = await apiRequest(
+        'POST',
+        endpoints.userReverify(),
+        token,
+        null
+      );
+
+      return response;
+    } catch (err) {
+      return thunkApi.rejectWithValue(err.message);
+    }
+  }
+);
 
 const initial = initFromStorage();
 

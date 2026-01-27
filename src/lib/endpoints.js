@@ -48,6 +48,13 @@ unhidePost: (postId) => `/api/posts/${postId}/unhide`,
 
 
 
+  // TODO: add missing users endpoint
+  userLogin: () => `/users/login`,
+  userRegister: () => `/users/register`,
+  userReverify: () => `/users/reverify`,
+  userVerifyToken: (token) => `/users/verify?token=${encodeURIComponent(token)}`,
+  userVerifyCode: (code) => `/users/verify?code=${encodeURIComponent(code)}`,
+   
 
 
   // User/Auth service
