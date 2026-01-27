@@ -69,7 +69,7 @@ export default function CreatePost() {
         if (firstKey) {
           try {
             const urlRaw = await fetch(
-              `http://localhost:5005/files/url?key=${encodeURIComponent(firstKey)}`,
+              `http://localhost:4003/files/url?key=${encodeURIComponent(firstKey)}`,
               { headers: { Authorization: `Bearer ${token}` } }
             );
             const urlData = await urlRaw.json().catch(() => ({}));
@@ -137,7 +137,7 @@ export default function CreatePost() {
       fd.append('scope', 'posts');
       fd.append('postId', String(draftId));
 
-      const res = await fetch('http://localhost:5005/files/upload', {
+      const res = await fetch('http://localhost:4003/files/upload', {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
