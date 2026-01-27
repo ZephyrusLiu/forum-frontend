@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { useSelector } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 
 import PageShell from '../components/PageShell.jsx';
 import { apiRequest } from '../lib/apiClient.js';
 import { endpoints, formatDate, unwrapResult } from '../lib/endpoints.js';
+import { setTokenAndUser } from '../store/authSlice';
 
 export default function Profile() {
   const { id } = useParams();
+  const dispatch = useDispatch();
   const { token, user } = useSelector((s) => s.auth);
 
   const [status, setStatus] = useState('idle');
@@ -36,6 +38,7 @@ export default function Profile() {
 
   const profileUserId = id || user?.userId;
 
+
   function getPostId(p) {
     const pid = p?._id ?? p?.id ?? p?.postId;
     return pid == null ? '' : String(pid);
@@ -51,10 +54,11 @@ export default function Profile() {
     return pid ? `/posts/${pid}` : null;
   }
 
+
   useEffect(() => {
     let ignore = false;
 
-    async function loadProfile() {
+    async function loadAll() {
       setStatus('loading');
       setError('');
 
@@ -68,12 +72,12 @@ export default function Profile() {
 
         if (ignore) return;
 
-        const data = unwrapResult(profileRaw);
-        setProfile(data);
-        setEditFirstName(data?.firstName || '');
-        setEditLastName(data?.lastName || '');
-        setEditEmail(data?.email || '');
-        setProfileS3Key(data?.profileS3Key || null);
+        const profileData = unwrapResult(profileRaw);
+        setProfile(profileData);
+        setEditFirstName(profileData?.firstName || '');
+        setEditLastName(profileData?.lastName || '');
+        setEditEmail(profileData?.email || '');
+        setProfileS3Key(profileData?.profileS3Key || null);
 
         if (topRaw) {
           const list = unwrapResult(topRaw);
@@ -94,19 +98,22 @@ export default function Profile() {
         setStatus('succeeded');
       } catch (e) {
         if (ignore) return;
-        setError(e?.message || 'Failed to load profile');
         setStatus('failed');
+        setError(e?.message || 'Failed to load profile');
       }
     }
 
-    if (profileUserId) loadProfile();
-    return () => { ignore = true; };
+    if (profileUserId) loadAll();
+    return () => {
+      ignore = true;
+    };
   }, [profileUserId, token]);
+
 
   useEffect(() => {
     let ignore = false;
 
-    async function loadPreviewUrl() {
+    async function loadPreview() {
       if (!profileS3Key) {
         setPreviewUrl('');
         return;
@@ -114,7 +121,7 @@ export default function Profile() {
 
       try {
         const res = await fetch(
-          `http://localhost:5005/files/url?key=${encodeURIComponent(profileS3Key)}`,
+          `http://localhost:4003/files/url?key=${encodeURIComponent(profileS3Key)}`,
           { headers: { Authorization: `Bearer ${token}` } }
         );
         const data = await res.json();
@@ -126,9 +133,12 @@ export default function Profile() {
       }
     }
 
-    loadPreviewUrl();
-    return () => { ignore = true; };
+    loadPreview();
+    return () => {
+      ignore = true;
+    };
   }, [profileS3Key, token]);
+
 
   async function uploadAvatarToS3() {
     if (!imageFile) return;
@@ -142,7 +152,7 @@ export default function Profile() {
       fd.append('scope', 'users');
       fd.append('kind', 'avatar');
 
-      const res = await fetch('http://localhost:5005/files/upload', {
+      const res = await fetch('http://localhost:4003/files/upload', {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
         body: fd,
@@ -164,18 +174,33 @@ export default function Profile() {
     }
   }
 
+
   const onSave = async (e) => {
     e.preventDefault();
     setSaveStatus('loading');
     setSaveMessage('');
 
     try {
-      const payload = {
-        firstName: editFirstName.trim(),
-        lastName: editLastName.trim(),
-        email: editEmail.trim(),
-        profileS3Key,
-      };
+      const payload = {};
+
+      if (editFirstName.trim() !== (profile?.firstName || '')) {
+        payload.firstName = editFirstName.trim();
+      }
+      if (editLastName.trim() !== (profile?.lastName || '')) {
+        payload.lastName = editLastName.trim();
+      }
+      if (editEmail.trim() !== (profile?.email || '')) {
+        payload.email = editEmail.trim();
+      }
+      if (profileS3Key !== profile?.profileS3Key) {
+        payload.profileS3Key = profileS3Key;
+      }
+
+      if (Object.keys(payload).length === 0) {
+        setSaveStatus('idle');
+        setSaveMessage('No changes to save.');
+        return;
+      }
 
       const raw = await apiRequest(
         'PATCH',
@@ -185,11 +210,18 @@ export default function Profile() {
       );
 
       const data = unwrapResult(raw);
+
+      // 🔑 handle rotated JWT (email change)
+      const newToken = data?.token ?? data?.result?.token;
+      if (newToken) {
+        dispatch(setTokenAndUser(newToken));
+      }
+
       setProfile((prev) => ({ ...(prev || {}), ...data }));
 
       setSaveStatus('succeeded');
       setSaveMessage(
-        editEmail.trim() && editEmail.trim() !== (profile?.email || '')
+        payload.email
           ? 'Profile updated. Please verify your new email.'
           : 'Profile updated.'
       );
@@ -198,6 +230,7 @@ export default function Profile() {
       setSaveMessage(e?.message || 'Failed to update profile');
     }
   };
+
 
   const onSearchHistory = async (e) => {
     e.preventDefault();
@@ -237,6 +270,7 @@ export default function Profile() {
   const fullName =
     `${profile?.firstName || ''} ${profile?.lastName || ''}`.trim() || 'Unnamed';
 
+
   return (
     <PageShell title={`/users/${profileUserId}/profile`} subtitle={null}>
       {status === 'loading' && <div className="muted">Loading…</div>}
@@ -244,21 +278,135 @@ export default function Profile() {
 
       {status === 'succeeded' && (
         <div className="stack">
+          {/* header */}
           <div className="card">
             <div className="row">
-              {previewUrl && <img className="avatar" src={previewUrl} alt="profile" />}
+              {previewUrl && (
+                <img className="avatar" src={previewUrl} alt="profile" />
+              )}
               <div>
                 <div className="title">{fullName}</div>
                 <div className="meta">
-                  Registered: {formatDate(profile?.registeredAt || profile?.createdAt)}
+                  Registered:{' '}
+                  {formatDate(profile?.registeredAt || profile?.createdAt)}
                 </div>
                 <div className="meta">Email: {profile?.email || '—'}</div>
               </div>
             </div>
           </div>
 
-          {/* Edit profile + avatar upload */}
-          {/* Top posts, drafts, history blocks remain unchanged from original */}
+          {/* edit profile */}
+          <div className="card">
+            <div className="title">Edit Profile</div>
+            <form className="form" onSubmit={onSave}>
+              <label className="field">
+                <span>First Name</span>
+                <input
+                  value={editFirstName}
+                  onChange={(e) => setEditFirstName(e.target.value)}
+                />
+              </label>
+
+              <label className="field">
+                <span>Last Name</span>
+                <input
+                  value={editLastName}
+                  onChange={(e) => setEditLastName(e.target.value)}
+                />
+              </label>
+
+              <label className="field">
+                <span>Email</span>
+                <input
+                  value={editEmail}
+                  onChange={(e) => setEditEmail(e.target.value)}
+                />
+              </label>
+
+              <label className="field">
+                <span>Profile Image</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) =>
+                    setImageFile(e.target.files?.[0] ?? null)
+                  }
+                  disabled={uploading}
+                />
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  onClick={uploadAvatarToS3}
+                  disabled={!imageFile || uploading}
+                >
+                  {uploading ? 'Uploading…' : 'Upload Avatar'}
+                </button>
+              </label>
+
+              {saveMessage && (
+                <div className={saveStatus === 'failed' ? 'error' : 'ok'}>
+                  {saveMessage}
+                </div>
+              )}
+
+              <div className="row">
+                <button
+                  className="btn"
+                  type="submit"
+                  disabled={saveStatus === 'loading'}
+                >
+                  {saveStatus === 'loading' ? 'Saving…' : 'Save Changes'}
+                </button>
+                <div className="hint">
+                  Updating email triggers verification. Go to{' '}
+                  <Link to="/users/verify">/users/verify</Link>.
+                </div>
+              </div>
+            </form>
+          </div>
+
+          {/* history */}
+          <div className="card">
+            <div className="title">View History (Published)</div>
+            <form className="row" onSubmit={onSearchHistory}>
+              <input
+                className="input"
+                value={historyKeyword}
+                onChange={(e) => setHistoryKeyword(e.target.value)}
+                placeholder="Search history keyword"
+              />
+              <button className="btn" type="submit">
+                Search
+              </button>
+            </form>
+
+            {historyStatus === 'failed' && (
+              <div className="error">{historyError}</div>
+            )}
+
+            {filteredHistory.length === 0 ? (
+              <div className="muted">No history yet.</div>
+            ) : (
+              <div className="list">
+                {filteredHistory.map((item) => (
+                  <div
+                    key={item.historyId || `${item.postId}-${item.viewDate}`}
+                    className="listItem"
+                  >
+                    <div className="listItem__top">
+                      <Link className="link" to={`/posts/${item.postId}`}>
+                        <b>Post {item.postId}</b>
+                      </Link>
+                      <span className="pill">Viewed</span>
+                    </div>
+                    <div className="muted">
+                      {formatDate(item.viewDate || item.viewedAt)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </PageShell>
