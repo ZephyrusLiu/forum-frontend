@@ -119,7 +119,7 @@ export default function Profile() {
 
       try {
         const res = await fetch(
-          `http://localhost:4003/files/url?key=${encodeURIComponent(profileS3Key)}`,
+          `http://localhost:5005/files/url?key=${encodeURIComponent(profileS3Key)}`,
           { headers: { Authorization: `Bearer ${token}` } }
         );
         const data = await res.json();
@@ -149,7 +149,7 @@ export default function Profile() {
       fd.append('scope', 'users');
       fd.append('kind', 'avatar');
 
-      const res = await fetch('http://localhost:4003/files/upload', {
+      const res = await fetch('http://localhost:5005/files/upload', {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
         body: fd,
