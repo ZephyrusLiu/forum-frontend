@@ -42,7 +42,7 @@ hidePost: (postId) => `/api/posts/${postId}/hide`,
 unhidePost: (postId) => `/api/posts/${postId}/unhide`,
 
   // File service (direct)
-  requestImageUpload: () => 'http://localhost:4003/files/upload',
+  requestImageUpload: () => 'http://localhost:5005/files/upload',
 
 
 
@@ -79,10 +79,12 @@ unhidePost: (postId) => `/api/posts/${postId}/unhide`,
 
   // History service
   createHistory: () => '/history',
-  listHistory: (keyword, date) => {
+  listHistory: (keyword, date, page, pageSize) => {
     const params = new URLSearchParams();
     if (keyword) params.set('keyword', keyword);
     if (date) params.set('date', date);
+    if (page) params.set('page', page);
+    if (pageSize) params.set('pageSize', pageSize);
     const query = params.toString();
     return query ? `/history?${query}` : '/history';
   },

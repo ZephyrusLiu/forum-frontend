@@ -1,332 +1,153 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useSelector } from 'react-redux';
-
 import PageShell from '../components/PageShell.jsx';
 import { apiRequest } from '../lib/apiClient.js';
-import { endpoints, unwrapResult } from '../lib/endpoints.js';
+import { endpoints } from '../lib/endpoints.js';
+import { decodeJwt } from '../lib/jwt.js';
 
-export default function CreatePost() {
-  const navigate = useNavigate();
+export default function ContactUs() {
   const { token, user } = useSelector((s) => s.auth);
-  const [searchParams] = useSearchParams();
-
-  const draftId = searchParams.get('draftId'); // from Profile/Home link
-
-  const [title, setTitle] = useState('');
-  const [content, setContent] = useState('');
-
-  // ✅ store S3 KEY in DB, but show SIGNED URL in preview
-  const [attachmentKeys, setAttachmentKeys] = useState(['']); // DB value (key)
-  const [previewUrl, setPreviewUrl] = useState(''); // UI only (signed url)
-
+  const [email, setEmail] = useState('');
+  const [subject, setSubject] = useState('');
+  const [message, setMessage] = useState('');
   const [status, setStatus] = useState('idle');
   const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
 
-  // upload state
-  const [imageFile, setImageFile] = useState(null);
-  const [uploading, setUploading] = useState(false);
+  const isLoggedIn = !!user;
+  const emailReadOnly = isLoggedIn;
 
-  // publishing requires email verified (requireEmailVerified)
-  const canPublish =
-    user?.status === 'active' || user?.type === 'admin' || user?.type === 'super';
+  useEffect(() => {
+    if (isLoggedIn && token) {
+      const payload = decodeJwt(token);
+      const emailFromToken = payload?.email;
 
-  const removeImage = () => {
-    setAttachmentKeys(['']);
-    setPreviewUrl('');
-    setImageFile(null);
+      if (emailFromToken) {
+        setEmail(emailFromToken);
+      } else if (user?.userId) {
+        async function fetchEmail() {
+          try {
+            const profileRaw = await apiRequest('GET', endpoints.userProfile(user.userId), token);
+            const profile = profileRaw?.email || profileRaw?.result?.email;
+            if (profile) {
+              setEmail(profile);
+            }
+          } catch (e) {
+            console.error('Failed to fetch user email:', e);
+          }
+        }
+        fetchEmail();
+      }
+    }
+  }, [isLoggedIn, token, user?.userId]);
+
+  const validateEmail = (emailValue) => {
+    if (!emailValue || !emailValue.trim()) {
+      return 'Email is required';
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(emailValue.trim())) {
+      return 'Please enter a valid email address';
+    }
+    return null;
   };
 
-  // Prefill when editing a draft
-  useEffect(() => {
-    let ignore = false;
-
-    async function loadDraft() {
-      if (!draftId) return;
-
-      setStatus('loading');
-      setError('');
-
-      try {
-        const raw = await apiRequest('GET', endpoints.getMyPostById(draftId), token);
-        if (ignore) return;
-
-        const d = unwrapResult(raw);
-
-        setTitle(d?.title ?? '');
-        setContent(d?.content ?? '');
-
-        const arr =
-          d?.attachments ?? d?.images ?? d?.imageUrls ?? d?.attachmentUrls ?? [];
-
-        const firstKey =
-          Array.isArray(arr) && arr.length ? String(arr[0] ?? '') : '';
-
-        // ✅ treat attachments[0] as KEY in DB
-        setAttachmentKeys([firstKey || '']);
-
-        // ✅ if we already have a key, fetch a fresh signed URL for preview
-        if (firstKey) {
-          try {
-            const urlRaw = await fetch(
-              `http://localhost:5005/files/url?key=${encodeURIComponent(firstKey)}`,
-              { headers: { Authorization: `Bearer ${token}` } }
-            );
-            const urlData = await urlRaw.json().catch(() => ({}));
-            if (urlRaw.ok && urlData?.url) setPreviewUrl(urlData.url);
-            else setPreviewUrl('');
-          } catch {
-            setPreviewUrl('');
-          }
-        } else {
-          setPreviewUrl('');
-        }
-
-        setStatus('idle');
-      } catch (e) {
-        if (ignore) return;
-        setError(e?.message || 'Failed to load draft');
-        setStatus('failed');
-      }
+  const validateForm = () => {
+    const emailError = validateEmail(email);
+    if (emailError) {
+      setError(emailError);
+      return false;
     }
-
-    loadDraft();
-    return () => {
-      ignore = true;
-    };
-  }, [draftId, token]);
-
-  function buildDraftPayload() {
-    const key = (attachmentKeys?.[0] ?? '').trim();
-    const keys = key ? [key] : [];
-
-    const t = title.trim();
-    const c = content.trim();
-
-    if (!t) throw new Error('title is required');
-    if (!c) throw new Error('content is required');
-
-    return {
-      title: t,
-      content: c,
-      stage: 'UNPUBLISHED',
-      isArchived: false,
-      attachments: keys, // ✅ store KEY in DB
-    };
-  }
-
-  // ✅ Upload via FILE SERVICE (server uploads to S3) -> returns { key, url }
-  // We store key in DB, and use url (signed) only for preview
-  async function uploadImageToS3() {
-    if (!imageFile) {
-      setError('Choose an image file first.');
-      return;
+    if (!subject || !subject.trim()) {
+      setError('Subject is required');
+      return false;
     }
-
-    if (!draftId) {
-      setError('Save draft first (need draftId before uploading image).');
-      return;
+    if (!message || !message.trim()) {
+      setError('Message is required');
+      return false;
     }
+    return true;
+  };
 
+  const onSubmit = async (e) => {
+    e.preventDefault();
     setError('');
-    setUploading(true);
+    setSuccessMessage('');
 
-    try {
-      const fd = new FormData();
-      fd.append('file', imageFile); // multer expects "file"
-      fd.append('scope', 'posts');
-      fd.append('postId', String(draftId));
-
-      const res = await fetch('http://localhost:5005/files/upload', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-        body: fd,
-      });
-
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(data?.error?.message || data?.message || 'Upload failed');
-      }
-
-      // After your controller change, it should return:
-      // { key, url: signedUrl, expiresIn, publicUrl }
-      const key = data?.key || data?.result?.key;
-      const signedUrl = data?.url || data?.result?.url;
-
-      if (!key) throw new Error('Upload ok but no key returned');
-      if (!signedUrl) throw new Error('Upload ok but no signed url returned');
-
-      setAttachmentKeys([String(key)]);
-      setPreviewUrl(String(signedUrl));
-      setImageFile(null);
-    } catch (e) {
-      setError(e?.message || 'Failed to upload image');
-    } finally {
-      setUploading(false);
-    }
-  }
-
-  async function saveDraft() {
-    setStatus('loading');
-    setError('');
-
-    try {
-      const payload = buildDraftPayload();
-
-      if (draftId) {
-        const raw = await apiRequest(
-          'PATCH',
-          endpoints.updatePost(draftId),
-          token,
-          payload
-        );
-        unwrapResult(raw);
-      } else {
-        const raw = await apiRequest('POST', endpoints.createPost(), token, payload);
-        unwrapResult(raw);
-      }
-
-      navigate('/home');
-    } catch (e) {
-      setError(e?.message || 'Failed to save draft');
-      setStatus('failed');
-    }
-  }
-
-  async function publishPost() {
-    if (!draftId) {
-      setError('Save the draft first before publishing.');
-      return;
-    }
-
-    if (!canPublish) {
-      setError('You must verify your account before publishing posts.');
+    if (!validateForm()) {
       return;
     }
 
     setStatus('loading');
-    setError('');
 
     try {
-      const raw = await apiRequest('POST', endpoints.publishPost(draftId), token);
-      unwrapResult(raw);
+      const payload = {
+        email: email.trim(),
+        subject: subject.trim(),
+        message: message.trim(),
+      };
 
-      navigate('/home');
+      await apiRequest('POST', endpoints.createContactMessage(), token, payload);
+
+      setStatus('succeeded');
+      setSuccessMessage('Your message has been sent successfully. We will get back to you soon.');
+      setSubject('');
+      setMessage('');
     } catch (e) {
-      setError(e?.message || 'Failed to publish post');
       setStatus('failed');
+      setError(e?.message || 'Failed to send message. Please try again.');
     }
-  }
-
-  const isLoading = status === 'loading';
-  const hasImage = Boolean((attachmentKeys?.[0] ?? '').trim());
+  };
 
   return (
-    <PageShell
-      title="/posts/create"
-      subtitle={draftId ? `Editing draft ${draftId}` : null}
-    >
-      <div className="form">
-        <label className="label">
-          Title
+    <PageShell title="/contactus">
+      <form className="form" onSubmit={onSubmit}>
+        <label className="field">
+          <span>Email</span>
           <input
-            className="input"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Post title"
+            type="email"
+            value={email}
+            onChange={(e) => !emailReadOnly && setEmail(e.target.value)}
+            placeholder="you@example.com"
+            autoComplete="email"
+            readOnly={emailReadOnly}
+            disabled={emailReadOnly}
+          />
+          {emailReadOnly && (
+            <div className="hint">Email is auto-filled from your account</div>
+          )}
+        </label>
+
+        <label className="field">
+          <span>Subject</span>
+          <input
+            type="text"
+            value={subject}
+            onChange={(e) => setSubject(e.target.value)}
+            placeholder="What is this regarding?"
+            required
           />
         </label>
 
-        <label className="label">
-          Description / Content
+        <label className="field">
+          <span>Message</span>
           <textarea
             className="textarea"
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            placeholder="Write something…"
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            placeholder="Please provide details about your inquiry..."
             rows={6}
+            required
           />
         </label>
 
-        <div className="label">Image (optional) — upload one</div>
-
-        <div className="stack" style={{ marginTop: 12 }}>
-          <div className="row">
-            <input
-              type="file"
-              accept="image/*"
-              onChange={(e) => setImageFile(e.target.files?.[0] ?? null)}
-              disabled={isLoading || uploading}
-            />
-
-            <button
-              className="btn btn--ghost"
-              type="button"
-              onClick={uploadImageToS3}
-              disabled={isLoading || uploading || !imageFile}
-              title={!draftId ? 'Save draft first to get an id' : undefined}
-            >
-              {uploading ? 'Uploading…' : 'Upload'}
-            </button>
-
-            <button
-              className="btn btn--ghost"
-              type="button"
-              onClick={removeImage}
-              disabled={isLoading || uploading || !hasImage}
-            >
-              Remove
-            </button>
-          </div>
-
-          {previewUrl ? (
-            <div className="stack">
-              <div className="label">Preview</div>
-              <img
-                src={previewUrl}
-                alt="attachment"
-                style={{ maxWidth: '100%', borderRadius: 10 }}
-              />
-            </div>
-          ) : null}
-        </div>
-
         {error ? <div className="error">Error: {error}</div> : null}
+        {successMessage ? <div className="ok">{successMessage}</div> : null}
 
-        <div className="row">
-          <button
-            className="btn btn--ghost"
-            type="button"
-            onClick={() => navigate('/home')}
-            disabled={isLoading || uploading}
-          >
-            Cancel
-          </button>
-
-          <div className="spacer" />
-
-          <button
-            className="btn btn--ghost"
-            type="button"
-            disabled={isLoading || uploading || !draftId || !canPublish}
-            onClick={publishPost}
-            title={!draftId ? 'Save draft first' : undefined}
-          >
-            {isLoading ? 'Publishing…' : 'Publish'}
-          </button>
-
-          <button
-            className="btn"
-            type="button"
-            disabled={isLoading || uploading}
-            onClick={saveDraft}
-          >
-            {isLoading ? 'Saving…' : draftId ? 'Update Draft' : 'Save Draft'}
-          </button>
-        </div>
-      </div>
+        <button className="btn" type="submit" disabled={status === 'loading'}>
+          {status === 'loading' ? 'Sending…' : 'Send Message'}
+        </button>
+      </form>
     </PageShell>
   );
 }

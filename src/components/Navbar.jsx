@@ -1,4 +1,4 @@
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { logout } from '../store/authSlice.js';
 
@@ -17,7 +17,6 @@ function getGroup(user, token) {
 
 export default function Navbar() {
   const dispatch = useDispatch();
-  const location = useLocation();
   const { token, user } = useSelector((s) => s.auth);
 
   const group = getGroup(user, token);
@@ -75,8 +74,8 @@ export default function Navbar() {
           <NavLink
             key={item.to}
             to={item.to}
+            end={item.to === '/users'}
             className={({ isActive }) => (isActive ? 'nav__link nav__link--active' : 'nav__link')}
-            style={{ display: location.pathname === item.to ? 'none' : 'inline-flex' }}
           >
             {item.label}
           </NavLink>

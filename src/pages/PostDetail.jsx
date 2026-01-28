@@ -320,7 +320,7 @@ export default function PostDetail() {
   const { token, user } = useSelector((s) => s.auth);
 
   // ✅ file-service base (direct)
-  const FILE_BASE = import.meta.env.VITE_FILE_SERVICE_URL || "http://localhost:4003";
+  const FILE_BASE = import.meta.env.VITE_FILE_SERVICE_URL || "http://localhost:5005";
 
   const [status, setStatus] = useState("idle");
   const [errorMsg, setErrorMsg] = useState("");
