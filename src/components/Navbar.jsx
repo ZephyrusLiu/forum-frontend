@@ -59,7 +59,7 @@ export default function Navbar() {
     <header className="nav">
       <div className="nav__brand">
         <div className="badge">Forum</div>
-        <div className="nav__title">Day3 — MVP Pages (Home / PostDetail / Profile / History)</div>
+        <div className="nav__title">Forum App</div>
         <div className="nav__spacer" />
         <div className="nav__pill">{badgeText}</div>
         {token ? (
