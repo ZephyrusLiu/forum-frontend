@@ -319,7 +319,7 @@ export default function Profile() {
                 <div className="title">{fullName}</div>
                 <div className="meta">
                   Registered:{' '}
-                  {formatDate(profile?.registeredAt || profile?.createdAt)}
+                  {formatDate(profile?.joinDate)}
                 </div>
                 <div className="meta">Email: {profile?.email || '—'}</div>
               </div>
