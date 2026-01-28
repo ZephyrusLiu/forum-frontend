@@ -23,6 +23,10 @@ export default function Profile() {
   const [historyDate, setHistoryDate] = useState('');
   const [historyStatus, setHistoryStatus] = useState('idle');
   const [historyError, setHistoryError] = useState('');
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyPageSize, setHistoryPageSize] = useState(10);
+  const [historyTotal, setHistoryTotal] = useState(0);
+  const [historyTotalPages, setHistoryTotalPages] = useState(0);
 
   const [editFirstName, setEditFirstName] = useState('');
   const [editLastName, setEditLastName] = useState('');
@@ -54,6 +58,49 @@ export default function Profile() {
     return pid ? `/posts/${pid}` : null;
   }
 
+  function applyHistoryPayload(payload, fallbackPage = 1, fallbackPageSize = 10) {
+    if (Array.isArray(payload)) {
+      setHistory(payload);
+      setHistoryPage(fallbackPage);
+      setHistoryPageSize(fallbackPageSize);
+      setHistoryTotal(payload.length);
+      setHistoryTotalPages(payload.length ? 1 : 0);
+      return;
+    }
+
+    const items = payload?.items || [];
+    const nextPage = payload?.page ?? fallbackPage;
+    const nextPageSize = payload?.pageSize ?? fallbackPageSize;
+    const nextTotal = payload?.total ?? items.length;
+    const nextTotalPages =
+      payload?.totalPages ?? (nextTotal ? Math.ceil(nextTotal / nextPageSize) : 0);
+
+    setHistory(items);
+    setHistoryPage(nextPage);
+    setHistoryPageSize(nextPageSize);
+    setHistoryTotal(nextTotal);
+    setHistoryTotalPages(nextTotalPages);
+  }
+
+  async function loadHistoryPage(page = 1, keyword = historyKeyword, date = historyDate) {
+    setHistoryStatus('loading');
+    setHistoryError('');
+
+    try {
+      const raw = await apiRequest(
+        'GET',
+        endpoints.listHistory(keyword, date, page, historyPageSize),
+        token
+      );
+      const list = unwrapResult(raw);
+      applyHistoryPayload(list, page, historyPageSize);
+      setHistoryStatus('succeeded');
+    } catch (e) {
+      setHistoryStatus('failed');
+      setHistoryError(e?.message || 'Failed to load history');
+    }
+  }
+
   useEffect(() => {
     let ignore = false;
 
@@ -66,7 +113,11 @@ export default function Profile() {
           apiRequest('GET', endpoints.userProfile(profileUserId), token),
           apiRequest('GET', endpoints.top3MyPosts(), token).catch(() => null),
           apiRequest('GET', endpoints.myDraftPosts(), token).catch(() => null),
-          apiRequest('GET', endpoints.listHistory(), token).catch(() => null),
+          apiRequest(
+            'GET',
+            endpoints.listHistory(historyKeyword, historyDate, 1, historyPageSize),
+            token
+          ).catch(() => null),
         ]);
 
         if (ignore) return;
@@ -90,7 +141,7 @@ export default function Profile() {
 
         if (historyRaw) {
           const list = unwrapResult(historyRaw);
-          setHistory(Array.isArray(list) ? list : list?.items || []);
+          applyHistoryPayload(list, 1, historyPageSize);
           setHistoryStatus('succeeded');
         }
 
@@ -229,22 +280,8 @@ export default function Profile() {
 
   const onSearchHistory = async (e) => {
     e.preventDefault();
-    setHistoryStatus('loading');
-    setHistoryError('');
-
-    try {
-      const raw = await apiRequest(
-        'GET',
-        endpoints.listHistory(historyKeyword, historyDate),
-        token
-      );
-      const list = unwrapResult(raw);
-      setHistory(Array.isArray(list) ? list : list?.items || []);
-      setHistoryStatus('succeeded');
-    } catch (e) {
-      setHistoryStatus('failed');
-      setHistoryError(e?.message || 'Failed to search history');
-    }
+    setHistoryPage(1);
+    await loadHistoryPage(1, historyKeyword, historyDate);
   };
 
   const filteredHistory = useMemo(() => {
@@ -385,24 +422,54 @@ export default function Profile() {
             {filteredHistory.length === 0 ? (
               <div className="muted">No history yet.</div>
             ) : (
-              <div className="list">
-                {filteredHistory.map((item) => (
-                  <div
-                    key={item.historyId || `${item.postId}-${item.viewDate}`}
-                    className="listItem"
-                  >
-                    <div className="listItem__top">
-                      <Link className="link" to={`/posts/${item.postId}`}>
-                        <b>{item?.post?.title || `Post ${item.postId}`}</b>
-                      </Link>
-                      <span className="pill">Viewed</span>
+              <>
+                <div className="list">
+                  {filteredHistory.map((item) => (
+                    <div
+                      key={item.historyId || `${item.postId}-${item.viewDate}`}
+                      className="listItem"
+                    >
+                      <div className="listItem__top">
+                        <Link className="link" to={`/posts/${item.postId}`}>
+                          <b>{item?.post?.title || `Post ${item.postId}`}</b>
+                        </Link>
+                        <span className="pill">Viewed</span>
+                      </div>
+                      <div className="muted">
+                        {formatDate(item.viewDate || item.viewedAt)}
+                      </div>
                     </div>
+                  ))}
+                </div>
+                {historyTotal > 0 && (
+                  <div className="row">
+                    <button
+                      className="btn btn--ghost"
+                      type="button"
+                      disabled={historyPage <= 1 || historyStatus === 'loading'}
+                      onClick={() => loadHistoryPage(historyPage - 1)}
+                    >
+                      Previous
+                    </button>
                     <div className="muted">
-                      {formatDate(item.viewDate || item.viewedAt)}
+                      Page {historyPage} of {historyTotalPages || 1} • {historyTotal}{' '}
+                      total
                     </div>
+                    <button
+                      className="btn btn--ghost"
+                      type="button"
+                      disabled={
+                        historyStatus === 'loading' ||
+                        historyTotalPages === 0 ||
+                        historyPage >= historyTotalPages
+                      }
+                      onClick={() => loadHistoryPage(historyPage + 1)}
+                    >
+                      Next
+                    </button>
                   </div>
-                ))}
-              </div>
+                )}
+              </>
             )}
           </div>
 
